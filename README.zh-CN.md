@@ -121,6 +121,20 @@ zsh tests/test-contracts.sh
 - `deep-research/config/*profiles.json`
 - `deep-research/config/ragflow_folder_mappings.json`
 
+## 欢迎使用、反馈与共建
+
+这个项目开源出来，是希望大家可以把它当成一个可运行的 OpenClaw 深度研究工程基线来试用、拆解、改造和继续完善。
+
+欢迎大家：
+
+- 在自己的 OpenClaw 运行时中试用这个工程；
+- 通过 issue 反馈安装、模型路由、RAGFlow/MinerU、搜索后端、视觉工具链、阶段合同或验收门禁中的问题；
+- 提出 prompt、流程、合同测试、搜索路由、证据台账、进度提醒、最终交付和科学制图方面的改进建议；
+- 提交 PR，补充新的搜索/RAG/视觉工具适配、新 skill、新测试、新文档或更好的可移植实现；
+- fork 后按自己的组织需求改造，但务必不要把私有配置、密钥、内部数据和本地路径提交到公开仓库。
+
+贡献建议见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 许可证
 
 MIT，见 [LICENSE](LICENSE)。

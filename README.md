@@ -118,6 +118,20 @@ The package intentionally excludes:
 
 Private configs must stay local. Example files are provided for public documentation and setup.
 
+## Feedback And Contributions
+
+This project is open-sourced as a working OpenClaw engineering baseline, and it will be more useful if other users try it in their own runtime environments.
+
+You are welcome to:
+
+- use it as an OpenClaw deep-research workflow template;
+- open issues with setup problems, model-routing differences, RAGFlow/MinerU parsing problems, visual toolchain failures, or stage-contract gaps;
+- suggest improvements to prompts, contracts, search routing, evidence tracking, progress reporting, acceptance gates, or scientific/business visual generation;
+- contribute pull requests for new backends, new skills, better documentation, portability fixes, and reproducible test cases;
+- fork and adapt it for your own organization, while keeping private configs and local data out of public repositories.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the preferred issue and pull-request format.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
