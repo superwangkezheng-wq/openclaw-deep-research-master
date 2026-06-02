@@ -1,0 +1,58 @@
+name: Feature Request / Improvement
+description: New adapter, skill, prompt, test, documentation, portability, or workflow improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement.
+
+        Good feature requests explain the workflow gap, the expected value, and the smallest useful implementation.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Prompt or stage contract
+        - Search backend adapter
+        - RAGFlow / MinerU integration
+        - Visual generation or validation
+        - Progress / reporting / notification
+        - Acceptance gate or test coverage
+        - Documentation or onboarding
+        - Portability / packaging
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What user workflow or operator pain does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed improvement
+      description: Describe the smallest useful change.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional. Mention simpler options or tradeoffs.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submit checks
+      options:
+        - label: This request does not require sharing secrets, private paths, or internal customer data.
+          required: true
+        - label: I am willing to help test or review the change.
+          required: false

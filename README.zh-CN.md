@@ -1,5 +1,7 @@
 # OpenClaw 深度研究主控工程
 
+![OpenClaw Deep Research Master banner](docs/assets/openclaw-deep-research-master-banner.svg)
+
 这是一个基于 OpenClaw 的深度研究工程包，用于把用户输入的粗糙研究题目，逐步转成可交付的商业研究成果：澄清需求、对齐内部知识库、规划多路研究、派发 worker 搜索与阅读、审计质量、生成终稿，并在全过程中保留证据、进度汇报、视觉资产和验收门禁。
 
 > 重要：本工程不是独立应用，也不是 pip/npm 包。它是 OpenClaw workspace/project，需要放到 OpenClaw 运行时里使用。使用者必须自行配置模型、搜索、RAGFlow、MinerU、Obsidian、飞书或其他交付通道。

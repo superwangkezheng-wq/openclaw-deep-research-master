@@ -1,0 +1,110 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">OpenClaw Deep Research Master banner</title>
+  <desc id="desc">A formal banner showing the OpenClaw deep research workflow from prompt optimization through private knowledge alignment, evidence, visual delivery, and acceptance gates.</desc>
+  <style>
+    .bg { fill: #f7f9f6; }
+    .panel { fill: #ffffff; stroke: #d7ded4; stroke-width: 1.5; }
+    .panel-soft { fill: #eef5f1; stroke: #c6d5ca; stroke-width: 1.5; }
+    .title { fill: #18211f; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 48px; font-weight: 750; letter-spacing: 0; }
+    .subtitle { fill: #3c4a47; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 21px; font-weight: 450; letter-spacing: 0; }
+    .eyebrow { fill: #65726e; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; font-weight: 650; letter-spacing: 0; }
+    .label { fill: #18211f; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 19px; font-weight: 700; letter-spacing: 0; }
+    .small { fill: #4d5b57; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; font-weight: 500; letter-spacing: 0; }
+    .tiny { fill: #5f6c68; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0; }
+    .line { stroke: #9fb2a8; stroke-width: 2; stroke-linecap: round; }
+    .line-strong { stroke: #3a8174; stroke-width: 3; stroke-linecap: round; }
+    .accent-teal { fill: #2f8175; }
+    .accent-amber { fill: #c9872b; }
+    .accent-ink { fill: #263331; }
+    .accent-red { fill: #b85548; }
+    .grid { stroke: #e1e7df; stroke-width: 1; }
+  </style>
+
+  <rect class="bg" width="1200" height="420"/>
+
+  <g opacity="0.7">
+    <path class="grid" d="M80 72H1120"/>
+    <path class="grid" d="M80 132H1120"/>
+    <path class="grid" d="M80 192H1120"/>
+    <path class="grid" d="M80 252H1120"/>
+    <path class="grid" d="M80 312H1120"/>
+    <path class="grid" d="M80 372H1120"/>
+    <path class="grid" d="M140 48V384"/>
+    <path class="grid" d="M260 48V384"/>
+    <path class="grid" d="M380 48V384"/>
+    <path class="grid" d="M500 48V384"/>
+    <path class="grid" d="M620 48V384"/>
+    <path class="grid" d="M740 48V384"/>
+    <path class="grid" d="M860 48V384"/>
+    <path class="grid" d="M980 48V384"/>
+  </g>
+
+  <rect x="44" y="38" width="1112" height="344" rx="18" class="panel"/>
+
+  <g transform="translate(78 72)">
+    <rect x="0" y="0" width="120" height="34" rx="17" class="panel-soft"/>
+    <circle cx="22" cy="17" r="7" class="accent-teal"/>
+    <text x="38" y="22" class="eyebrow">OPENCLAW</text>
+
+    <text x="0" y="86" class="title">Deep Research Master</text>
+    <text x="0" y="122" class="subtitle">Private RAG, evidence ledgers, scientific visuals, acceptance gates</text>
+
+    <g transform="translate(0 174)">
+      <rect x="0" y="0" width="150" height="70" rx="10" class="panel-soft"/>
+      <circle cx="24" cy="24" r="8" class="accent-amber"/>
+      <text x="42" y="29" class="label">Prompt</text>
+      <text x="18" y="52" class="small">Stage 0/1 optimizer</text>
+
+      <path d="M156 35H192" class="line-strong"/>
+
+      <rect x="200" y="0" width="150" height="70" rx="10" class="panel-soft"/>
+      <circle cx="224" cy="24" r="8" class="accent-teal"/>
+      <text x="242" y="29" class="label">RAG + PDF</text>
+      <text x="218" y="52" class="small">RAGFlow / MinerU</text>
+
+      <path d="M356 35H392" class="line-strong"/>
+
+      <rect x="400" y="0" width="150" height="70" rx="10" class="panel-soft"/>
+      <circle cx="424" cy="24" r="8" class="accent-ink"/>
+      <text x="442" y="29" class="label">Research</text>
+      <text x="418" y="52" class="small">director + workers</text>
+
+      <path d="M556 35H592" class="line-strong"/>
+
+      <rect x="600" y="0" width="150" height="70" rx="10" class="panel-soft"/>
+      <circle cx="624" cy="24" r="8" class="accent-red"/>
+      <text x="642" y="29" class="label">Delivery</text>
+      <text x="618" y="52" class="small">audit + final gates</text>
+    </g>
+  </g>
+
+  <g transform="translate(870 76)">
+    <g transform="translate(0 0)">
+      <rect x="0" y="0" width="248" height="48" rx="10" class="panel"/>
+      <path d="M18 24H54" class="line-strong"/>
+      <circle cx="64" cy="24" r="6" class="accent-teal"/>
+      <text x="82" y="29" class="small">1 + 6 staged contract</text>
+    </g>
+
+    <g transform="translate(0 64)">
+      <rect x="0" y="0" width="248" height="48" rx="10" class="panel"/>
+      <path d="M20 32L34 20L50 30L66 15" class="line-strong"/>
+      <text x="82" y="29" class="small">Evidence ledger</text>
+    </g>
+
+    <g transform="translate(0 128)">
+      <rect x="0" y="0" width="248" height="48" rx="10" class="panel"/>
+      <rect x="20" y="18" width="20" height="20" rx="4" class="accent-amber"/>
+      <rect x="48" y="18" width="20" height="20" rx="4" class="accent-teal"/>
+      <text x="82" y="29" class="small">Scientific visuals</text>
+    </g>
+
+    <g transform="translate(0 192)">
+      <rect x="0" y="0" width="248" height="48" rx="10" class="panel"/>
+      <path d="M20 25L33 36L66 14" class="line-strong"/>
+      <text x="82" y="29" class="small">Acceptance gates</text>
+    </g>
+
+    <text x="0" y="286" class="tiny">Prompt Optimizer | RAGFlow | MinerU | Visual Delivery</text>
+  </g>
+</svg>

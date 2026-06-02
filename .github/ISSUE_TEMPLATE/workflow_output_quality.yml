@@ -1,0 +1,78 @@
+name: Workflow / Output Quality
+description: Stage contract gaps, Prompt Optimizer behavior, research quality, evidence, visuals, Obsidian sync, or final delivery issues.
+title: "[Quality]: "
+labels:
+  - quality
+  - stage-contract
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for workflow behavior and output quality rather than installation failures.
+
+        Privacy reminder / 隐私提醒: summarize private research topics instead of pasting internal documents or customer data.
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Stage or workflow area
+      options:
+        - Stage 0/1 Prompt Optimizer and clarification
+        - Stage 2 RAGFlow / private knowledge alignment
+        - Stage 3 director planning / search router
+        - Stage 4 worker execution / evidence ledger
+        - Stage 5 audit
+        - Stage 6 final delivery
+        - Visual asset routing
+        - Obsidian sync
+        - Progress or stage reporting
+        - Acceptance gate
+        - Cross-stage behavior
+    validations:
+      required: true
+  - type: textarea
+    id: task_summary
+    attributes:
+      label: Research task summary
+      description: Describe the task shape without private details. Include language, expected deliverable type, and source-scope expectations.
+      placeholder: |
+        Topic shape:
+        Expected output:
+        Source scope:
+        Visual requirements:
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What was low quality, missing, confusing, or inconsistent?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence from artifacts
+      description: Mention relevant artifact names, stage reports, validation output, or redacted excerpts.
+      placeholder: |
+        run status:
+        stage report:
+        validation command:
+        artifact path or redacted excerpt:
+    validations:
+      required: false
+  - type: textarea
+    id: desired
+    attributes:
+      label: Desired behavior
+      description: What should the workflow produce or enforce instead?
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submit checks
+      options:
+        - label: I removed private content and secrets from the report.
+          required: true
+        - label: I checked whether this is already covered by README, docs, or CONTRIBUTING.
+          required: false

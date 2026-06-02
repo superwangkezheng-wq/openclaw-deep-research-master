@@ -1,5 +1,7 @@
 # OpenClaw Deep Research Master
 
+![OpenClaw Deep Research Master banner](docs/assets/openclaw-deep-research-master-banner.svg)
+
 OpenClaw Deep Research Master is a production-oriented deep research workflow package for OpenClaw. It turns a rough research request into a clarified task, aligns it with private reference knowledge, plans multi-lane research, executes source-gathering workers, audits the result, and produces a final business-ready deliverable with evidence, visual assets, progress reporting, and release gates.
 
 中文说明见 [README.zh-CN.md](README.zh-CN.md)。

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Privacy and public-reporting reminder
+    url: https://github.com/superwangkezheng-wq/openclaw-deep-research-master#repository-safety
+    about: Do not share API keys, private folder mappings, internal documents, local customer data, or screenshots containing secrets.
