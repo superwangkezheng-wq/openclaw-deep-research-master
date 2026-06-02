@@ -1052,7 +1052,11 @@ grep -q 'LOCAL_MODEL_BASE_URL="https://qwen.example/v1"' "${ragflow_env}" || fai
 jq -e '.mappings["business-reference"].folder == "REMOTE_ONLY" and .mappings["business-reference"].dataset_id == "ds-business" and .mappings["style-reference"].folder == "REMOTE_ONLY" and .mappings["style-reference"].dataset_id == "ds-style"' "${mapping_json}" >/dev/null || fail "folder mappings missing cloud reference selections"
 jq -e '.profiles["research-reference"].base_url == "https://ragflow.example" and .profiles["research-reference"].path == "/api/v1/retrieval" and .profiles["research-reference"].dataset_ids[0] == "ds-business" and .profiles["style-reference"].dataset_ids[0] == "ds-style"' "${profiles_json}" >/dev/null || fail "ragflow profiles missing query config"
 jq -e '.mode == "cloud" and .sudo_required == false and .core_scripts_require_zsh == true and .reference_sync_mode == "remote_only_or_runtime_visible_folder"' "${summary_json}" >/dev/null || fail "install summary missing cloud/zsh/reference contract"
-git -C "${repo_root}" check-ignore -q deep-research/config/install.summary.local.json || fail "install summary local file is not ignored"
+if git -C "${repo_root}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git -C "${repo_root}" check-ignore -q deep-research/config/install.summary.local.json || fail "install summary local file is not ignored"
+else
+  [[ ! -e "${repo_root}/deep-research/config/install.summary.local.json" ]] || fail "install summary local file exists in non-git distribution"
+fi
 rm -rf "${tmp_root}"
 
 echo "33/33 REMOTE_ONLY reference mappings skip local folder sync in cloud mode"
