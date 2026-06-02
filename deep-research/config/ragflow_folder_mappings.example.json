@@ -1,0 +1,21 @@
+{
+  "_comment": "Copy this file to ragflow_folder_mappings.json and fill in local folder paths, dataset IDs, and profile names for your environment. The runtime ragflow_folder_mappings.json file is intentionally gitignored.",
+  "mappings": {
+    "business-reference": {
+      "folder": "<YOUR_BUSINESS_REFERENCE_FOLDER_PATH>",
+      "dataset_id": "<YOUR_BUSINESS_REFERENCE_DATASET_ID>",
+      "profile": "<YOUR_RESEARCH_REFERENCE_PROFILE>",
+      "description": "Stage 2 research reference library. Put reusable business background, prior research, and internal reference materials here.",
+      "pdf_parser_required": "MinerU",
+      "migration_note": "If this folder contains PDFs, configure the target RAGFlow dataset or ingestion pipeline with PDF parser = MinerU before syncing."
+    },
+    "style-reference": {
+      "folder": "<YOUR_STYLE_REFERENCE_FOLDER_PATH>",
+      "dataset_id": "<YOUR_STYLE_REFERENCE_DATASET_ID>",
+      "profile": "<YOUR_STYLE_REFERENCE_PROFILE>",
+      "description": "Stage 6 style reference library. Use for final-delivery structure, wording, and style alignment.",
+      "pdf_parser_required": "MinerU",
+      "migration_note": "If this folder contains PDFs, configure the target RAGFlow dataset or ingestion pipeline with PDF parser = MinerU before syncing."
+    }
+  }
+}

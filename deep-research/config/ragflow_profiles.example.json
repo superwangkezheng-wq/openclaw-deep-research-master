@@ -1,0 +1,34 @@
+{
+  "profiles": {
+    "lenovo-research-reference": {
+      "base_url": "http://127.0.0.1:9380",
+      "path": "/api/v1/replace-with-your-ragflow-endpoint",
+      "method": "POST",
+      "api_key_env": "RAGFLOW_API_KEY",
+      "query_field": "question",
+      "top_k_field": "top_k",
+      "dataset_ids_field": "dataset_ids",
+      "dataset_ids": [
+        "replace-with-your-ragflow-dataset-id"
+      ],
+      "extra_body": {
+        "stream": false
+      }
+    },
+    "lenovo-style-reference": {
+      "base_url": "http://127.0.0.1:9380",
+      "path": "/api/v1/replace-with-your-ragflow-endpoint",
+      "method": "POST",
+      "api_key_env": "RAGFLOW_API_KEY",
+      "query_field": "question",
+      "top_k_field": "top_k",
+      "dataset_ids_field": "dataset_ids",
+      "dataset_ids": [
+        "replace-with-your-ragflow-style-dataset-id"
+      ],
+      "extra_body": {
+        "stream": false
+      }
+    }
+  }
+}

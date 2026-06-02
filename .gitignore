@@ -1,0 +1,35 @@
+# Broken or archived local Git metadata
+.git.broken-*/
+
+# Local runtime state and generated reports
+.openclaw/
+.progress_report_log.json
+.fallback_alert_log.json
+.stage_report_outbox/
+.manual_audit_runs/
+.manual_worker_runs/
+
+# Local learnings and scratch artifacts
+.learnings/
+
+# Deep research run outputs and generated sync reports
+deep-research/runs/
+deep-research/reports/
+
+# Local/private RAGFlow configuration
+deep-research/config/*.env
+deep-research/config/*profiles.json
+deep-research/config/ragflow_folder_mappings.json
+!deep-research/config/*.example.env
+!deep-research/config/*profiles.example.json
+!deep-research/config/ragflow_folder_mappings.example.json
+
+# OS/editor noise
+.DS_Store
+*.swp
+*.tmp
+*.bak-*
+
+# Logs and pid files
+*.log
+*.pid

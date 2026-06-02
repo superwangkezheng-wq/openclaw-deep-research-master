@@ -1,0 +1,7 @@
+{
+  "task_id": "",
+  "objective_hint": "",
+  "attachments": [],
+  "known_constraints": [],
+  "expected_output": "task_spec + readiness decision"
+}

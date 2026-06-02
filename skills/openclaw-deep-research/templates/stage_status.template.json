@@ -1,0 +1,9 @@
+{
+  "task_id": "",
+  "current_stage": "INTAKE_RECEIVED",
+  "status": "in_progress",
+  "owner": "01_master-controller",
+  "waiting_on": null,
+  "frozen_task_spec_version": null,
+  "last_updated_at": ""
+}

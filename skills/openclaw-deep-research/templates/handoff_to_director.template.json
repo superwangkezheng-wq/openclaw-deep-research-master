@@ -1,0 +1,8 @@
+{
+  "task_id": "",
+  "kb_packet_file": "kb_packet.md",
+  "source_scope_file": "source_scope.json",
+  "terminology_map_file": "terminology_map.json",
+  "context_conflicts_file": "context_conflicts.md",
+  "alignment_status": null
+}

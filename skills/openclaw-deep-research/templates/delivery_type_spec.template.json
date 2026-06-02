@@ -1,0 +1,21 @@
+{
+  "delivery_type": "internal_analysis",
+  "delivery_type_status": "known",
+  "reader": "",
+  "use_case": "",
+  "decision_context": "",
+  "format": {
+    "primary": "markdown",
+    "secondary": ["ppt_outline"]
+  },
+  "structure": [],
+  "tone": "clear, executive, evidence-grounded",
+  "length": {
+    "target": "",
+    "maximum": ""
+  },
+  "must_include": [],
+  "must_avoid": [],
+  "custom_type_questions": [],
+  "ready_for_final_delivery": true
+}

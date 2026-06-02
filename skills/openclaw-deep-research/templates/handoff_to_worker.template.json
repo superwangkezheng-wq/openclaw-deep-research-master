@@ -1,0 +1,11 @@
+{
+  "task_id": "",
+  "research_plan_file": "research_plan.md",
+  "wave_plan_file": "wave_plan.json",
+  "fanout_policy": {
+    "mode": "standard_parallel",
+    "default_lanes": ["official_primary", "technical_evaluation", "market_industry", "competitor_action", "community_signal", "counter_evidence"]
+  },
+  "worker_task_pack_root": "worker_task_packs",
+  "director_status": null
+}
