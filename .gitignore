@@ -20,6 +20,7 @@ deep-research/reports/
 deep-research/config/*.env
 deep-research/config/*profiles.json
 deep-research/config/ragflow_folder_mappings.json
+deep-research/config/install.summary.local.json
 !deep-research/config/*.example.env
 !deep-research/config/*profiles.example.json
 !deep-research/config/ragflow_folder_mappings.example.json

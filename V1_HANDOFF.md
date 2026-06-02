@@ -18,6 +18,20 @@ zsh scripts/local-runtime-smoke.sh
 
 It verifies live Kimi, CodePlan, Tavily, AnySearch, RAGFlow, RAGFlow folder sync helper, MinerU API, visual asset tools, Feishu, and Obsidian wiring without printing secrets.
 
+## First-Time Cloud Install
+
+For a fresh local or cloud OpenClaw workspace, run the bash-compatible setup wizard before live smoke:
+
+```bash
+bash scripts/install-config-wizard.sh --mode cloud
+```
+
+The wizard uses no sudo. It prompts for AnySearch/Tavily keys, RAGFlow/MinerU, business-reference and style-reference mappings, dataset IDs, and model-service settings. The installer can run under bash, but the core workflow scripts still require `zsh`; do not run the core workflow scripts with bash.
+
+If the cloud runtime cannot see local business/style folders, set those folders to `REMOTE_ONLY`. That means the documents must already be uploaded to RAGFlow or synced by another machine. `scripts/sync-rag-reference-folders.sh` will skip local folder sync for `REMOTE_ONLY` mappings and report `skipped_remote_only`.
+
+For weaker models such as `qwen/qwen3.6`, keep `docs/INSTALLATION.md`, `docs/DEPENDENCIES.md`, and `deep-research/config/install.summary.local.json` visible to the operator/model so setup does not depend on inference.
+
 ## Runtime Configuration
 
 - `OPENCLAW_WORKSPACE` defaults to `$HOME/.openclaw/workspace-deep-research-master`.

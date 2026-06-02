@@ -97,7 +97,7 @@ inject_worker_search_route() {
   mv "${tmp_pack}" "${pack_path}"
 }
 
-echo "1/30 clarification requires explicit search depth"
+echo "1/33 clarification requires explicit search depth"
 tmp_root="$(mktemp -d /tmp/dr-contract-clarification.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t1"
 mkdir -p "${run}/01_clarification"
@@ -121,7 +121,7 @@ assert_eq "$(jq -r '.current_stage' "${run}/stage_status.json")" "WAITING_USER" 
 [[ -f "${run}/01_clarification/search_budget_confirmation_packet.json" ]] || fail "search budget packet missing"
 rm -rf "${tmp_root}"
 
-echo "2/30 clarification dispatch terminates heredoc and updates stage status"
+echo "2/33 clarification dispatch terminates heredoc and updates stage status"
 tmp_root="$(mktemp -d /tmp/dr-contract-clarify-dispatch.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t1dispatch"
 mkdir -p "${run}/00_intake"
@@ -140,7 +140,7 @@ fi
 grep -q "Use prompt_optimization.md as the structured task prompt" "${run}/00_intake/dispatch_to_clarification.prompt.md" || fail "dispatch did not require optimized prompt as Stage 1 input"
 rm -rf "${tmp_root}"
 
-echo "3/30 search strategy enforces budget by depth"
+echo "3/33 search strategy enforces budget by depth"
 tmp_root="$(mktemp -d /tmp/dr-contract-strategy.XXXXXX)"
 cat > "${tmp_root}/invalid_deep.json" <<'EOF'
 {
@@ -162,7 +162,7 @@ fi
 grep -q "below deep minimum 90" "${ERR}" || fail "deep budget error missing"
 rm -rf "${tmp_root}"
 
-echo "4/30 search router builds executable routes and dispatch injects route"
+echo "4/33 search router builds executable routes and dispatch injects route"
 tmp_root="$(mktemp -d /tmp/dr-contract-router.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t3"
 director="${run}/03_research_director"
@@ -213,7 +213,7 @@ OPENCLAW_DISABLE_STAGE_REPORTS=true OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRI
 jq -e '.search_route.primary_backend == "anysearch" and (.search_route.route_hash | length) > 0 and .search_backend_preference[0] == "anysearch"' "${run}/04_worker_execution/workers/W1/task_pack.json" >/dev/null || fail "worker dispatch did not inject search route"
 rm -rf "${tmp_root}"
 
-echo "5/30 lane coverage requires all standard lanes or explicit mapping"
+echo "5/33 lane coverage requires all standard lanes or explicit mapping"
 tmp_root="$(mktemp -d /tmp/dr-contract-lanes.XXXXXX)"
 director="${tmp_root}/director"
 mkdir -p "${director}"
@@ -250,7 +250,7 @@ EOF
 zsh -c 'source "$1/lane-coverage-contract.sh"; validate_lane_coverage_contract "$2" "$3" "$4" lanes' -- "${SCRIPT_ROOT}" "${director}/handoff_to_worker.json" "${director}/search_strategy.json" "${director}"
 rm -rf "${tmp_root}"
 
-echo "6/30 worker validation requires route budget, AnySearch trace, checkpoints, and evidence ledger"
+echo "6/33 worker validation requires route budget, AnySearch trace, checkpoints, and evidence ledger"
 tmp_root="$(mktemp -d /tmp/dr-contract-worker.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t4"
 worker="${run}/04_worker_execution/workers/W1"
@@ -290,7 +290,7 @@ tail -n 1 "${run}/stage_events.jsonl" | jq -e '.event_detail | contains("SEARCH_
 jq -e 'select(.record_type == "source_discovery" and .worker_id == "W1")' "${run}/04_worker_execution/evidence_ledger.jsonl" >/dev/null || fail "source discovery ledger record missing"
 rm -rf "${tmp_root}"
 
-echo "7/30 forced progress report bypasses heartbeat throttle"
+echo "7/33 forced progress report bypasses heartbeat throttle"
 tmp_root="$(mktemp -d /tmp/dr-contract-progress.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t5"
 mkdir -p "${run}/04_worker_execution/workers"
@@ -302,7 +302,7 @@ OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_PROGRESS_REPORT_LOG="${tmp_root}/log.j
 grep -q "阶段事件：contract-test" "${OUT}" || fail "forced report reason missing"
 rm -rf "${tmp_root}"
 
-echo "8/30 completed runs do not emit periodic progress reports"
+echo "8/33 completed runs do not emit periodic progress reports"
 tmp_root="$(mktemp -d /tmp/dr-contract-progress-complete.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t5done"
 mkdir -p "${run}/06_final_delivery"
@@ -318,7 +318,7 @@ grep -q "阶段事件：RUN_COMPLETED" "${OUT}" || fail "forced completion repor
 grep -q "任务已完成，不是卡住" "${OUT}" || fail "forced completion report body missing"
 rm -rf "${tmp_root}"
 
-echo "9/30 progress cron follows active run lifecycle"
+echo "9/33 progress cron follows active run lifecycle"
 tmp_root="$(mktemp -d /tmp/dr-contract-cron-lifecycle.XXXXXX)"
 mkdir -p "${tmp_root}/deep-research/runs/t9done" "${tmp_root}/cron"
 cat > "${tmp_root}/cron/jobs.json" <<'EOF'
@@ -356,7 +356,7 @@ jq -e '.should_enable_monitoring == true and (.active_task_ids | index("t9active
 jq -e 'all(.jobs[]; .enabled == true)' "${tmp_root}/cron/jobs.json" >/dev/null || fail "active run left cron jobs disabled"
 rm -rf "${tmp_root}"
 
-echo "10/30 stage event bus records stage events even when reports are disabled"
+echo "10/33 stage event bus records stage events even when reports are disabled"
 tmp_root="$(mktemp -d /tmp/dr-contract-events.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t6"
 mkdir -p "${run}"
@@ -366,7 +366,7 @@ OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_DISABLE_STAGE_REPORTS=true zsh "${SCRI
 tail -n 1 "${run}/stage_events.jsonl" | jq -e '.event_type == "stage_report_event" and .event_detail == "READY_FOR_WORKERS"' >/dev/null || fail "stage event content invalid"
 rm -rf "${tmp_root}"
 
-echo "11/30 director validation generates router plan and research run preview"
+echo "11/33 director validation generates router plan and research run preview"
 tmp_root="$(mktemp -d /tmp/dr-contract-preview.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t7"
 director="${run}/03_research_director"
@@ -418,7 +418,7 @@ jq -e '.preview_status == "ready" and .worker_count == 6 and .total_target_candi
 grep -q "Research Run Preview" "${director}/research_run_preview.md" || fail "research run preview markdown missing"
 rm -rf "${tmp_root}"
 
-echo "12/30 final delivery requires real visual asset plan when figures are requested"
+echo "12/33 final delivery requires real visual asset plan when figures are requested"
 tmp_root="$(mktemp -d /tmp/dr-contract-final-visual.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t8"
 final="${run}/06_final_delivery"
@@ -481,7 +481,7 @@ OPENCLAW_DISABLE_STAGE_REPORTS=true OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRI
 assert_eq "$(cat "${OUT}")" "ready" "final visual validation"
 rm -rf "${tmp_root}"
 
-echo "13/30 golden case regression gate checks observability artifacts"
+echo "13/33 golden case regression gate checks observability artifacts"
 tmp_root="$(mktemp -d /tmp/dr-contract-golden.XXXXXX)"
 run="${tmp_root}/deep-research/runs/huawei-tao-law-20250607"
 mkdir -p "${run}/03_research_director" "${run}/04_worker_execution" "${run}/06_final_delivery"
@@ -495,7 +495,7 @@ OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/check-golden-case-regressio
 grep -q "PASS: golden case regression" "${OUT}" || fail "golden regression did not pass"
 rm -rf "${tmp_root}"
 
-echo "14/30 acceptance gate verifies final state, stage report, visual assets, and Obsidian sync"
+echo "14/33 acceptance gate verifies final state, stage report, visual assets, and Obsidian sync"
 tmp_root="$(mktemp -d /tmp/dr-contract-acceptance.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t11"
 final="${run}/06_final_delivery"
@@ -562,14 +562,14 @@ echo "stage report" > "${tmp_root}/.stage_report_outbox/t11-20260528120000-DELIV
 OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true OPENCLAW_WORKSPACE="${tmp_root}" OBSIDIAN_VAULT="${obsidian_vault}" zsh "${SCRIPT_ROOT}/deep-research-acceptance.sh" t11 > "${OUT}"
 jq -e '.status == "pass_with_warnings" and .summary.fail == 0 and ([.checks[] | select(.name == "obsidian_sync" and .status == "pass")] | length == 1)' "${OUT}" >/dev/null || fail "acceptance gate did not pass with expected warning-only status"
 
-echo "15/30 close accepted run marks completed only after acceptance passes"
+echo "15/33 close accepted run marks completed only after acceptance passes"
 OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true OPENCLAW_DISABLE_STAGE_REPORTS=true OPENCLAW_WORKSPACE="${tmp_root}" OBSIDIAN_VAULT="${obsidian_vault}" zsh "${SCRIPT_ROOT}/close-accepted-run.sh" t11 > "${OUT}"
 jq -e '.status == "completed" and .acceptance_status == "pass_with_warnings"' "${OUT}" >/dev/null || fail "close accepted run output invalid"
 jq -e '.status == "completed" and .waiting_on == "none" and .stage_status == "accepted_complete" and .acceptance.status == "pass_with_warnings"' "${run}/stage_status.json" >/dev/null || fail "accepted run was not marked completed"
 tail -n 1 "${run}/stage_events.jsonl" | jq -e '.event_type == "stage_report_event" or .event_type == "run_completed"' >/dev/null || fail "close accepted run event missing"
 rm -rf "${tmp_root}"
 
-echo "16/30 private RAGFlow folder mappings stay out of the repository"
+echo "16/33 private RAGFlow folder mappings stay out of the repository"
 repo_root="$(cd "${SCRIPT_ROOT}/.." && pwd -P)"
 [[ -s "${repo_root}/deep-research/config/ragflow_folder_mappings.example.json" ]] || fail "missing ragflow folder mappings example"
 private_ragflow_config_paths=(
@@ -599,7 +599,7 @@ if rg -q 'RAGFLOW_AUTH_HEADER="Authorization: Bearer|headers\\[\\"Authorization\
 fi
 rg -q 'RAGFLOW_AUTH_TOKEN' "${repo_root}/scripts/ragflow-local-query.sh" "${repo_root}/scripts/ragflow-list-documents.sh" || fail "RAGFlow container fallback token contract missing"
 
-echo "17/30 Obsidian sync reports copy failures"
+echo "17/33 Obsidian sync reports copy failures"
 tmp_root="$(mktemp -d /tmp/dr-contract-obsidian-sync.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t16"
 obsidian_root="${tmp_root}/obsidian/t16"
@@ -614,7 +614,7 @@ chmod 700 "${obsidian_root}/00_intake"
 grep -q "Failed to copy" "${ERR}" || fail "Obsidian sync failure message missing"
 rm -rf "${tmp_root}"
 
-echo "18/30 P1 paths and Stage 1 contracts stay portable and synchronized"
+echo "18/33 P1 paths and Stage 1 contracts stay portable and synchronized"
 repo_root="$(cd "${SCRIPT_ROOT}/.." && pwd -P)"
 personal_home_path_regex='/Users/[A-Za-z0-9._-]+'
 personal_vault_path_pattern='lenovo'"-work/工作/"'深度研究工程'
@@ -630,7 +630,7 @@ if rg -q 'idempotency_key=.*date' "${repo_root}/scripts/emit-stage-report.sh"; t
   fail "stage report idempotency key is time-varying"
 fi
 
-echo "19/30 RAGFlow list documents paginates beyond the first page"
+echo "19/33 RAGFlow list documents paginates beyond the first page"
 tmp_root="$(mktemp -d /tmp/dr-contract-ragflow-pages.XXXXXX)"
 mkdir -p "${tmp_root}/deep-research/config"
 cat > "${tmp_root}/deep-research/config/ragflow.local.env" <<'EOF'
@@ -666,7 +666,7 @@ assert_eq "$(jq -r '.documents | length' "${tmp_root}/docs.json")" "3" "ragflow 
 grep -q 'page=2&page_size=2' "${tmp_root}/curl.log" || fail "ragflow pagination did not request page 2"
 rm -rf "${tmp_root}"
 
-echo "20/30 stage reports use stable idempotency keys"
+echo "20/33 stage reports use stable idempotency keys"
 tmp_root="$(mktemp -d /tmp/dr-contract-stage-idempotency.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t19"
 mkdir -p "${run}"
@@ -692,7 +692,7 @@ assert_eq "$(sort -u "${tmp_root}/lark.log" | wc -l | tr -d ' ')" "1" "stable id
 grep -qx 'deep-research-stage-t19-READY_FOR_WORKERS' "${tmp_root}/lark.log" || fail "unexpected idempotency key"
 rm -rf "${tmp_root}"
 
-echo "21/30 stage event appends are lock-protected under concurrency"
+echo "21/33 stage event appends are lock-protected under concurrency"
 tmp_root="$(mktemp -d /tmp/dr-contract-stage-lock.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t20"
 mkdir -p "${run}"
@@ -710,7 +710,7 @@ jq -e -s 'length == 20 and all(.[]; .task_id == "t20" and .event_type == "concur
 [[ ! -e "${run}/stage_events.jsonl.lock" ]] || fail "stage event lock directory leaked"
 rm -rf "${tmp_root}"
 
-echo "22/30 JSON file updates reject invalid usage and clean failed temp files"
+echo "22/33 JSON file updates reject invalid usage and clean failed temp files"
 tmp_root="$(mktemp -d /tmp/dr-contract-json-utils.XXXXXX)"
 mkdir -p "${tmp_root}/tmp"
 if TMPDIR="${tmp_root}/tmp/" zsh -c "source '${SCRIPT_ROOT}/json-file-utils.sh'; safe_jq_update_file" > "${OUT}" 2> "${ERR}"; then
@@ -725,14 +725,14 @@ assert_eq "$(jq -r '.ok' "${tmp_root}/state.json")" "true" "safe_jq_update_file 
 assert_eq "$(find "${tmp_root}/tmp" -type f | wc -l | tr -d ' ')" "0" "safe_jq_update_file leaked temp files"
 rm -rf "${tmp_root}"
 
-echo "23/30 commercial handoff defaults keep Obsidian portable"
+echo "23/33 commercial handoff defaults keep Obsidian portable"
 repo_root="$(cd "${SCRIPT_ROOT}/.." && pwd -P)"
 rg -q '\.openclaw/deep-research-vault' "${repo_root}/scripts/sync-to-obsidian.sh" "${repo_root}/scripts/deep-research-acceptance.sh" "${repo_root}/scripts/generate-progress-report.sh" "${repo_root}/RULES/gates-and-delivery.md" || fail "portable Obsidian default missing"
 if rg -q 'lenovo-work|工作/深度研究工程' "${repo_root}/scripts" "${repo_root}/RULES"; then
   fail "commercial handoff still contains personal Obsidian path"
 fi
 
-echo "24/30 v1 release handoff has a machine-checkable gate"
+echo "24/33 v1 release handoff has a machine-checkable gate"
 [[ -x "${repo_root}/scripts/v1-release-check.sh" ]] || fail "v1 release check script missing or not executable"
 [[ -s "${repo_root}/V1_HANDOFF.md" ]] || fail "v1 handoff document missing"
 grep -q 'scripts/v1-release-check.sh' "${repo_root}/V1_HANDOFF.md" || fail "handoff doc missing release gate command"
@@ -746,7 +746,7 @@ grep -q 'run-fallback-alert-heartbeat.sh' "${repo_root}/scripts/v1-release-check
 grep -q 'rev-parse --is-inside-work-tree' "${repo_root}/scripts/v1-release-check.sh" || fail "release gate missing non-git distribution detection"
 grep -q 'non-git distribution' "${repo_root}/scripts/v1-release-check.sh" || fail "release gate missing non-git distribution path"
 
-echo "25/30 RAGFlow PDF ingestion dependencies are explicit and packaged"
+echo "25/33 RAGFlow PDF ingestion dependencies are explicit and packaged"
 [[ -x "${repo_root}/ragflow_local_kb/sync_folder_to_ragflow.sh" ]] || fail "RAGFlow folder sync helper missing from package source"
 grep -q 'RAGFLOW_SYNC_SCRIPT' "${repo_root}/deep-research/config/ragflow.local.example.env" || fail "RAGFlow sync script env missing"
 grep -q 'RAGFLOW_REDIS_CONTAINER' "${repo_root}/deep-research/config/ragflow.local.example.env" || fail "RAGFlow Redis container env missing"
@@ -760,7 +760,7 @@ grep -q 'mineru-api' "${repo_root}/scripts/local-runtime-smoke.sh" || fail "loca
 grep -q 'MinerU' "${repo_root}/V1_HANDOFF.md" || fail "handoff doc missing MinerU warning"
 grep -q 'ragflow_local_kb/sync_folder_to_ragflow.sh' "${repo_root}/V1_HANDOFF.md" || fail "handoff doc missing RAGFlow sync helper warning"
 
-echo "26/30 visual asset toolchain dependencies are explicit and smoke-tested"
+echo "26/33 visual asset toolchain dependencies are explicit and smoke-tested"
 grep -q 'visual-assets' "${repo_root}/scripts/local-runtime-smoke.sh" || fail "local runtime smoke missing visual assets check"
 grep -q 'visual_assets_ready' "${repo_root}/scripts/deep-research-runtime-doctor.sh" || fail "runtime doctor missing visual assets readiness check"
 grep -q 'visual-assets-doctor.sh' "${repo_root}/V1_HANDOFF.md" || fail "handoff doc missing visual assets doctor command"
@@ -772,7 +772,7 @@ grep -q 'manim' "${repo_root}/V1_HANDOFF.md" || fail "handoff doc missing Manim 
 grep -q 'schemdraw' "${repo_root}/V1_HANDOFF.md" || fail "handoff doc missing schemdraw dependency"
 grep -q 'bioicons' "${repo_root}/V1_HANDOFF.md" || fail "handoff doc missing bioicons dependency"
 
-echo "27/30 local runtime env loads only for the live workspace"
+echo "27/33 local runtime env loads only for the live workspace"
 tmp_root="$(mktemp -d /tmp/dr-contract-runtime-env.XXXXXX)"
 mkdir -p "${tmp_root}/deep-research/config" "${tmp_root}/deep-research/runs/t24/00_intake"
 echo "# Intake" > "${tmp_root}/deep-research/runs/t24/00_intake/intake.md"
@@ -792,7 +792,7 @@ OBSIDIAN_VAULT="${tmp_root}/override-vault" OPENCLAW_WORKSPACE="${tmp_root}" OPE
 grep -q "${tmp_root}/override-vault/t24" "${OUT}" || fail "explicit Obsidian override was not preserved"
 rm -rf "${tmp_root}"
 
-echo "28/30 visual skill trigger smoke verifier enforces deep-research-visuals routing"
+echo "28/33 visual skill trigger smoke verifier enforces deep-research-visuals routing"
 tmp_root="$(mktemp -d /tmp/dr-contract-visual-trigger.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t25"
 final="${run}/06_final_delivery"
@@ -880,7 +880,7 @@ DEEP_RESEARCH_VISUAL_TRIGGER_MIN_WIDTH=1 DEEP_RESEARCH_VISUAL_TRIGGER_MIN_HEIGHT
 grep -q "PASS: visual skill trigger smoke t25" "${OUT}" || fail "visual trigger verifier did not pass"
 rm -rf "${tmp_root}"
 
-echo "29/30 clarification dispatch runs prompt optimizer before Stage 1"
+echo "29/33 clarification dispatch runs prompt optimizer before Stage 1"
 tmp_root="$(mktemp -d /tmp/dr-contract-prompt-opt.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t26"
 mkdir -p "${run}/00_intake"
@@ -912,7 +912,7 @@ grep -q "prompt_optimization.md" "${run}/00_intake/dispatch_to_clarification.pro
 grep -q "Use prompt_optimization.md as the structured task prompt" "${run}/00_intake/dispatch_to_clarification.prompt.md" || fail "dispatch did not require optimized prompt as Stage 1 input"
 rm -rf "${tmp_root}"
 
-echo "30/30 clarification prompt optimizer smoke verifier requires real Stage 1 optimization output"
+echo "30/33 clarification prompt optimizer smoke verifier requires real Stage 1 optimization output"
 tmp_root="$(mktemp -d /tmp/dr-contract-clarification-smoke.XXXXXX)"
 run="${tmp_root}/deep-research/runs/t27"
 mkdir -p "${run}/00_intake" "${run}/01_clarification"
@@ -994,6 +994,94 @@ if DEEP_RESEARCH_PROMPT_OPTIMIZER_MODE=fixture \
   fail "clarification prompt optimizer smoke accepted a hung codex exec"
 fi
 grep -q "timed out after 1s" "${ERR}" || fail "clarification prompt optimizer timeout error absent"
+rm -rf "${tmp_root}"
+
+echo "31/33 install wizard is bash-compatible and explicit about cloud OpenClaw limits"
+repo_root="$(cd "${SCRIPT_ROOT}/.." && pwd -P)"
+[[ -x "${repo_root}/scripts/install-config-wizard.sh" ]] || fail "install config wizard missing or not executable"
+head -n 1 "${repo_root}/scripts/install-config-wizard.sh" | grep -q '/usr/bin/env bash' || fail "install config wizard must be bash-compatible"
+bash "${repo_root}/scripts/install-config-wizard.sh" --help > "${OUT}"
+grep -q 'no sudo' "${OUT}" || fail "install wizard help must state no sudo requirement"
+grep -q 'core workflow scripts still require zsh' "${OUT}" || fail "install wizard help must state zsh boundary"
+grep -q 'bash scripts/install-config-wizard.sh --mode cloud' "${repo_root}/README.md" || fail "README missing cloud setup wizard command"
+grep -q 'bash scripts/install-config-wizard.sh --mode cloud' "${repo_root}/README.zh-CN.md" || fail "Chinese README missing cloud setup wizard command"
+grep -q 'qwen' "${repo_root}/docs/INSTALLATION.md" || fail "installation doc missing weaker-model guidance"
+grep -q 'REMOTE_ONLY' "${repo_root}/docs/INSTALLATION.md" || fail "installation doc missing cloud reference-folder guidance"
+
+echo "32/33 cloud install wizard writes search, RAGFlow, reference, MinerU, and model-service config"
+tmp_root="$(mktemp -d /tmp/dr-contract-install-wizard.XXXXXX)"
+mkdir -p "${tmp_root}/deep-research/config"
+OPENCLAW_WORKSPACE="${tmp_root}" \
+DEEP_RESEARCH_SETUP_MODE=cloud \
+DEEP_RESEARCH_PRIMARY_MODEL="qwen/qwen3.6" \
+DEEP_RESEARCH_MODEL_FALLBACKS="openai/gpt-5.5,local-summary/qwen3.5-9b-q8" \
+DEEP_RESEARCH_ANYSEARCH_API_KEY="any-test-key" \
+DEEP_RESEARCH_TAVILY_API_KEY="tav-test-key" \
+DEEP_RESEARCH_RAGFLOW_BASE_URL="https://ragflow.example" \
+DEEP_RESEARCH_RAGFLOW_API_KEY="rag-test-key" \
+DEEP_RESEARCH_RAGFLOW_QUERY_PATH="/api/v1/retrieval" \
+DEEP_RESEARCH_BUSINESS_REFERENCE_FOLDER="REMOTE_ONLY" \
+DEEP_RESEARCH_BUSINESS_REFERENCE_DATASET_ID="ds-business" \
+DEEP_RESEARCH_BUSINESS_REFERENCE_PROFILE="research-reference" \
+DEEP_RESEARCH_STYLE_REFERENCE_FOLDER="REMOTE_ONLY" \
+DEEP_RESEARCH_STYLE_REFERENCE_DATASET_ID="ds-style" \
+DEEP_RESEARCH_STYLE_REFERENCE_PROFILE="style-reference" \
+DEEP_RESEARCH_MINERU_API_BASE="https://mineru.example" \
+DEEP_RESEARCH_MINERU_APISERVER="https://mineru.example" \
+DEEP_RESEARCH_LOCAL_MODEL_BASE_URL="https://qwen.example/v1" \
+DEEP_RESEARCH_EMBEDDING_MODEL="text-embedding-qwen3" \
+DEEP_RESEARCH_LOCAL_CHAT_MODEL="qwen3.6" \
+  bash "${repo_root}/scripts/install-config-wizard.sh" --non-interactive > "${OUT}"
+grep -q 'mode=cloud' "${OUT}" || fail "install wizard output missing cloud mode"
+grep -q 'no sudo' "${OUT}" || fail "install wizard output missing no-sudo note"
+grep -q 'qwen/qwen3.6' "${OUT}" || fail "install wizard output missing qwen model note"
+runtime_env="${tmp_root}/deep-research/config/runtime.local.env"
+ragflow_env="${tmp_root}/deep-research/config/ragflow.local.env"
+mapping_json="${tmp_root}/deep-research/config/ragflow_folder_mappings.json"
+profiles_json="${tmp_root}/deep-research/config/ragflow_profiles.json"
+summary_json="${tmp_root}/deep-research/config/install.summary.local.json"
+for required in "${runtime_env}" "${ragflow_env}" "${mapping_json}" "${profiles_json}" "${summary_json}"; do
+  [[ -s "${required}" ]] || fail "install wizard did not write ${required}"
+done
+grep -q 'ANYSEARCH_API_KEY' "${runtime_env}" || fail "runtime env missing AnySearch key prompt output"
+grep -q 'TAVILY_API_KEY' "${runtime_env}" || fail "runtime env missing Tavily key prompt output"
+grep -q 'DEEP_RESEARCH_PRIMARY_MODEL="qwen/qwen3.6"' "${runtime_env}" || fail "runtime env missing primary model"
+grep -q 'RAGFLOW_BASE_URL="https://ragflow.example"' "${ragflow_env}" || fail "ragflow env missing base URL"
+grep -q 'MINERU_API_BASE="https://mineru.example"' "${ragflow_env}" || fail "ragflow env missing MinerU API"
+grep -q 'LOCAL_MODEL_BASE_URL="https://qwen.example/v1"' "${ragflow_env}" || fail "ragflow env missing local/external model service URL"
+jq -e '.mappings["business-reference"].folder == "REMOTE_ONLY" and .mappings["business-reference"].dataset_id == "ds-business" and .mappings["style-reference"].folder == "REMOTE_ONLY" and .mappings["style-reference"].dataset_id == "ds-style"' "${mapping_json}" >/dev/null || fail "folder mappings missing cloud reference selections"
+jq -e '.profiles["research-reference"].base_url == "https://ragflow.example" and .profiles["research-reference"].path == "/api/v1/retrieval" and .profiles["research-reference"].dataset_ids[0] == "ds-business" and .profiles["style-reference"].dataset_ids[0] == "ds-style"' "${profiles_json}" >/dev/null || fail "ragflow profiles missing query config"
+jq -e '.mode == "cloud" and .sudo_required == false and .core_scripts_require_zsh == true and .reference_sync_mode == "remote_only_or_runtime_visible_folder"' "${summary_json}" >/dev/null || fail "install summary missing cloud/zsh/reference contract"
+git -C "${repo_root}" check-ignore -q deep-research/config/install.summary.local.json || fail "install summary local file is not ignored"
+rm -rf "${tmp_root}"
+
+echo "33/33 REMOTE_ONLY reference mappings skip local folder sync in cloud mode"
+tmp_root="$(mktemp -d /tmp/dr-contract-remote-only-sync.XXXXXX)"
+mkdir -p "${tmp_root}/deep-research/config"
+cat > "${tmp_root}/deep-research/config/ragflow_folder_mappings.json" <<'EOF'
+{
+  "mappings": {
+    "business-reference": {
+      "folder": "REMOTE_ONLY",
+      "dataset_id": "ds-business",
+      "profile": "research-reference",
+      "description": "cloud business reference",
+      "sync_mode": "remote_only"
+    },
+    "style-reference": {
+      "folder": "REMOTE_ONLY",
+      "dataset_id": "ds-style",
+      "profile": "style-reference",
+      "description": "cloud style reference",
+      "sync_mode": "remote_only"
+    }
+  }
+}
+EOF
+OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/sync-rag-reference-folders.sh" all > "${OUT}"
+jq -e '.business.status == "skipped_remote_only" and .business.dataset_id == "ds-business" and .style.status == "skipped_remote_only" and .style.dataset_id == "ds-style"' "${OUT}" >/dev/null || fail "REMOTE_ONLY sync did not skip both mappings"
+[[ -f "${tmp_root}/deep-research/reports/business-sync-report.latest.json" ]] || fail "REMOTE_ONLY business report missing"
+[[ -f "${tmp_root}/deep-research/reports/style-sync-report.latest.json" ]] || fail "REMOTE_ONLY style report missing"
 rm -rf "${tmp_root}"
 
 echo "PASS: deep research contracts"

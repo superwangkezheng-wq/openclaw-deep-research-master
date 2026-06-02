@@ -89,7 +89,17 @@ See [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) for the full matrix.
    $HOME/.openclaw/workspace-deep-research-master
    ```
 
-3. Copy local config examples:
+3. Run the bash-compatible setup wizard. It does not use `sudo`; the installer can run under bash, but the core workflow scripts still require `zsh`.
+
+   ```bash
+   bash scripts/install-config-wizard.sh --mode cloud
+   # or:
+   bash scripts/install-config-wizard.sh --mode local
+   ```
+
+   The wizard prompts for AnySearch/Tavily API keys, RAGFlow/MinerU settings, business-reference and style-reference folders or `REMOTE_ONLY`, dataset IDs, and model-service settings.
+
+4. If you prefer manual setup, copy local config examples:
 
    ```bash
    cp deep-research/config/runtime.local.example.env deep-research/config/runtime.local.env
@@ -97,24 +107,26 @@ See [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) for the full matrix.
    cp deep-research/config/ragflow_folder_mappings.example.json deep-research/config/ragflow_folder_mappings.json
    ```
 
-4. Fill in your local paths, dataset IDs, model/search credentials, and Obsidian vault settings. Do not commit private config files.
-5. Run the release gate:
+5. Fill in your local paths, dataset IDs, model/search credentials, and Obsidian vault settings. Do not commit private config files.
+6. Run the release gate:
 
    ```bash
    zsh scripts/v1-release-check.sh
    ```
 
-6. On an operator machine, run live smoke:
+7. On an operator machine, run live smoke:
 
    ```bash
    zsh scripts/local-runtime-smoke.sh
    ```
 
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for cloud OpenClaw, no-sudo, `REMOTE_ONLY`, vector database, MinerU, and weaker-model setup guidance.
+
 ## Validation Status
 
 The commercial baseline was validated on 2026-06-02 with:
 
-- `tests/test-contracts.sh`: `PASS 30/30`
+- `tests/test-contracts.sh`: `PASS 33/33`
 - `scripts/v1-release-check.sh`: `PASS`
 - non-git distribution release gate: `PASS`
 - `scripts/local-runtime-smoke.sh`: `PASS 11 checks`

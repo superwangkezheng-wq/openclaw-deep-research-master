@@ -87,7 +87,17 @@ zsh scripts/local-runtime-smoke.sh
 $HOME/.openclaw/workspace-deep-research-master
 ```
 
-复制本地配置模板：
+优先运行 bash 安装向导。它不会使用 `sudo`；安装向导本身可以用 bash 跑，但核心工作流脚本仍然需要 `zsh`，不能直接改成 bash 替代。
+
+```bash
+bash scripts/install-config-wizard.sh --mode cloud
+# 或：
+bash scripts/install-config-wizard.sh --mode local
+```
+
+安装向导会提示配置 AnySearch/Tavily API key、RAGFlow/MinerU、业务参考和风格匹配文件夹或 `REMOTE_ONLY`、dataset ID，以及 RAGFlow 使用的本地/外部模型服务。
+
+如果要手工配置，复制本地配置模板：
 
 ```bash
 cp deep-research/config/runtime.local.example.env deep-research/config/runtime.local.env
@@ -96,6 +106,8 @@ cp deep-research/config/ragflow_folder_mappings.example.json deep-research/confi
 ```
 
 然后填写本地路径、RAGFlow dataset ID、模型配置、Obsidian vault、搜索 API 等。不要提交这些私有配置。
+
+云端 OpenClaw、无 sudo、`REMOTE_ONLY`、向量数据库、MinerU、本地/外部模型服务和弱模型配置说明见 [docs/INSTALLATION.md](docs/INSTALLATION.md)。
 
 ## 验证
 
@@ -119,7 +131,7 @@ zsh tests/test-contracts.sh
 
 2026-06-02 商业基线验证：
 
-- 合同测试：`PASS 30/30`
+- 合同测试：`PASS 33/33`
 - 运行时 release gate：`PASS`
 - 无 Git 分发目录 release gate：`PASS`
 - live runtime smoke：`PASS 11 checks`
