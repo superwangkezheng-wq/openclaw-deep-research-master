@@ -15,6 +15,19 @@
 - **进度提醒与阶段汇报**：生命周期门控的 progress heartbeat、stage report、模型 fallback 告警、飞书幂等 key、完成后自动关闭 routine cron。
 - **商业交付门禁**：合同测试、runtime doctor、heartbeat smoke、local runtime smoke、acceptance gate、Obsidian sync、便携路径/密钥扫描。
 
+## 参考项目与定位
+
+本项目参考了开源深度研究和多 agent 协作生态中的两个重要项目：
+
+- [HKUDS/ClawTeam](https://github.com/HKUDS/ClawTeam)：面向 Claude Code、Codex、OpenClaw 和其他命令行 agent 的多 agent 协调框架，重点是 agent 派生、任务协同、worktree 隔离、状态汇报和团队式执行基础设施。
+- [HKUDS/Auto-Deep-Research](https://github.com/HKUDS/Auto-Deep-Research)：基于 AutoAgent 的开源、低成本自动化深度研究助手，重点是开箱即用的自动研究、网页/来源探索、文件支持、多模型兼容和报告综合。
+
+命名说明：[karpathy/autoresearch](https://github.com/karpathy/autoresearch) 是思想相邻的 autonomous ML experimentation loop，主要用于单 GPU nanochat 训练实验自动迭代。它不是上面所说的 `Auto-Deep-Research` 项目，也不是本 OpenClaw 工程包的直接依赖。本文档中如无额外说明，`Auto-Deep-Research` 均指 `HKUDS/Auto-Deep-Research`。
+
+OpenClaw 深度研究主控工程的定位不同：它不是通用多 agent 框架，也不是零配置研究应用，而是一个用于商业研究交付的 OpenClaw workspace 工程包。它强调固定的 1 + 6 阶段合同、Stage 0/1 Prompt Optimizer、RAGFlow/MinerU 私有参考库对齐、搜索路由和证据台账、生命周期门控的进度汇报、Obsidian 同步、科学/业务图表路由，以及最终交付前的验收门禁。
+
+因此，本项目的优势不在于替代 ClawTeam 或 Auto-Deep-Research，而在于把深度研究变成可重复、可审计、可结合私有知识库、可产出高质量视觉资产、可用于商业交付的 OpenClaw 生产工作流。
+
 ## 默认模型链
 
 本工程商业基线使用：

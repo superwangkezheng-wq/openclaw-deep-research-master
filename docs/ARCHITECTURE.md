@@ -4,6 +4,17 @@
 
 OpenClaw Deep Research Master is organized as a staged OpenClaw workflow.
 
+### Reference Projects And Positioning
+
+| Project | Primary Focus | Relationship To This Project |
+| --- | --- | --- |
+| [HKUDS/ClawTeam](https://github.com/HKUDS/ClawTeam) | Multi-agent coordination for CLI agents, including spawning, worktree isolation, status reporting, inbox/task coordination, and team execution. | Inspiration for agent coordination patterns. This project does not try to become a general coordination framework; it packages a specific OpenClaw deep-research delivery workflow. |
+| [HKUDS/Auto-Deep-Research](https://github.com/HKUDS/Auto-Deep-Research) | Automated deep-research assistant built on AutoAgent, with multi-model support, web/source exploration, file support, and report synthesis. | Inspiration for open-source deep-research automation. This project adds OpenClaw-specific staged contracts, private RAGFlow/MinerU alignment, evidence ledgers, visual routing, lifecycle reports, Obsidian sync, and commercial acceptance gates. |
+
+Naming note: [karpathy/autoresearch](https://github.com/karpathy/autoresearch) is an adjacent autonomous ML experimentation loop for single-GPU nanochat training. It is not the `HKUDS/Auto-Deep-Research` project and is not a direct dependency of this repository.
+
+The practical advantage of this repository is delivery governance: research is not only automated, but also constrained by auditable stages, local/private reference alignment, explicit evidence artifacts, visual deliverable contracts, and completion gates.
+
 ### Stage Map
 
 1. **Stage 0 Intake**: stores raw intake, intake gate, and prompt optimization artifacts.
@@ -26,6 +37,17 @@ OpenClaw Deep Research Master is organized as a staged OpenClaw workflow.
 ## 中文
 
 本工程是一个 OpenClaw 分阶段工作流，不是单个脚本。核心设计是把“研究质量”拆成可验证的阶段合同。
+
+### 参考项目与定位
+
+| 项目 | 主要定位 | 与本项目的关系 |
+| --- | --- | --- |
+| [HKUDS/ClawTeam](https://github.com/HKUDS/ClawTeam) | 面向命令行 agent 的多 agent 协调框架，包含 agent 派生、worktree 隔离、状态汇报、inbox/task 协调和团队执行。 | 提供多 agent 协调模式参考。本项目不做通用协调框架，而是封装一个具体的 OpenClaw 深度研究交付工作流。 |
+| [HKUDS/Auto-Deep-Research](https://github.com/HKUDS/Auto-Deep-Research) | 基于 AutoAgent 的自动化深度研究助手，包含多模型支持、网页/来源探索、文件支持和报告综合。 | 提供开源深度研究自动化参考。本项目进一步加入 OpenClaw 阶段合同、私有 RAGFlow/MinerU 对齐、证据台账、视觉路由、生命周期汇报、Obsidian 同步和商业验收门禁。 |
+
+命名说明：[karpathy/autoresearch](https://github.com/karpathy/autoresearch) 是相邻的 autonomous ML experimentation loop，主要用于单 GPU nanochat 训练实验自动迭代。它不是 `HKUDS/Auto-Deep-Research`，也不是本仓库的直接依赖。
+
+本项目的实际优势是交付治理：研究不仅要自动化，还要被可审计阶段、本地/私有参考库、显式证据资产、视觉交付合同和完成门禁约束住。
 
 ### 阶段链路
 

@@ -17,6 +17,19 @@ OpenClaw Deep Research Master is a production-oriented deep research workflow pa
 - **Progress and fallback monitoring**: lifecycle-gated progress reports, stage reports, model fallback alerts, stable idempotency keys, and completed-run cron shutdown.
 - **Commercial release gates**: contract tests, runtime doctor, heartbeat smoke, local runtime smoke, acceptance gate, Obsidian sync checks, and portable packaging checks.
 
+## Reference Projects And Positioning
+
+This project references the broader open-source deep-research and agent-coordination ecosystem, especially:
+
+- [HKUDS/ClawTeam](https://github.com/HKUDS/ClawTeam): a multi-agent coordination framework for CLI agents such as Claude Code, Codex, OpenClaw, and custom terminal-native agents. Its emphasis is agent spawning, coordination, worktree isolation, status reporting, and team execution infrastructure.
+- [HKUDS/Auto-Deep-Research](https://github.com/HKUDS/Auto-Deep-Research): an open-source, cost-efficient automated deep-research assistant based on the AutoAgent framework. Its emphasis is ready-to-use autonomous research, web/source exploration, file support, multi-model compatibility, and report synthesis.
+
+Naming note: [karpathy/autoresearch](https://github.com/karpathy/autoresearch) is a thought-adjacent autonomous ML experimentation loop for single-GPU nanochat training. It is not the `Auto-Deep-Research` project referenced above, and it is not a direct dependency of this OpenClaw package. In this repository, `Auto-Deep-Research` means `HKUDS/Auto-Deep-Research` unless explicitly stated otherwise.
+
+OpenClaw Deep Research Master is different in scope. It is not a general multi-agent framework and not a zero-configuration research app. It is an OpenClaw workspace package for commercial research delivery, with a fixed 1 + 6 staged contract, Stage 0/1 Prompt Optimizer, RAGFlow/MinerU private-reference alignment, search-route and evidence ledgers, lifecycle-gated progress reports, Obsidian sync, scientific/business visual routing, and acceptance gates before final delivery.
+
+Its main advantage is operational delivery quality: it turns deep research into a repeatable, auditable, private-knowledge-aware, visual-deliverable-ready business workflow. ClawTeam and Auto-Deep-Research are upstream inspirations and useful reference projects; this repository focuses on the OpenClaw production workflow layer built around them.
+
 ## Default Model Chain
 
 The production baseline was validated with:
