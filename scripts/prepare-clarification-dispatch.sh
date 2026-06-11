@@ -40,6 +40,7 @@ EOF
 fi
 
 OBJECTIVE_HINT="$(jq -r '.objective_hint // ""' "${HANDOFF_JSON}")"
+MODEL_FALLBACK_POLICY="$(zsh "${SCRIPT_DIR}/render-model-fallback-policy.sh" "the stage status artifact or main markdown output")"
 
 if [[ ! -f "${SCRIPT_DIR}/optimize-intake-prompt.sh" ]]; then
   echo "Missing required script: ${SCRIPT_DIR}/optimize-intake-prompt.sh" >&2
@@ -94,12 +95,7 @@ Write or overwrite these files under \`${RUN_ROOT}/01_clarification/\`:
 3. If prompt_optimization.json has \`status=fallback_manual\`, record the fallback in \`assumption_register.md\` and \`spec_readiness.json\`.
 4. Do not defer prompt optimization to Stage 6; it is a Stage 0/1 input-shaping step.
 
-## Model Fallback Policy
-
-1. Runtime model order is Kimi -> CodePlan -> local.
-2. Kimi is the primary research-quality model; CodePlan is the first fallback; local is last-resort fallback only.
-3. If fallback occurs or is suspected, record the landing layer in the stage status artifact or main markdown output.
-4. Do not lower evidence, structure, or source-quality standards because of fallback; mark unresolved items explicitly.
+${MODEL_FALLBACK_POLICY}
 
 ## Rules
 

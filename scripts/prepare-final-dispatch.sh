@@ -18,6 +18,7 @@ PROMPT_MD="${FINAL_ROOT}/dispatch_to_final.prompt.md"
 NOW="$(date '+%Y-%m-%dT%H:%M:%S%z')"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 source "${SCRIPT_DIR}/json-file-utils.sh"
+MODEL_FALLBACK_POLICY="$(zsh "${SCRIPT_DIR}/render-model-fallback-policy.sh" "final_status.json and mention it in style_alignment.md")"
 
 required_files=(
   "${RUN_ROOT}/01_clarification/task_spec.md"
@@ -117,12 +118,7 @@ Write or overwrite these files under ${FINAL_ROOT}/:
 final_status.json.status must be one of ready, ready_with_notes, or needs_rewrite.
 Use ready when the final deliverables are complete and no rewrite route is needed; do not write completed or done.
 
-## Model Fallback Policy
-
-1. Runtime model order is Kimi -> CodePlan -> local.
-2. Kimi is the primary research-quality model; CodePlan is the first fallback; local is last-resort fallback only.
-3. If fallback occurs or is suspected, record the landing layer in final_status.json and mention it in style_alignment.md.
-4. Do not lower evidence, structure, or source-quality standards because of fallback; mark unresolved items explicitly.
+${MODEL_FALLBACK_POLICY}
 
 ## Rules
 

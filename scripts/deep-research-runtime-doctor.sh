@@ -15,6 +15,20 @@ if [[ -f "${SCRIPT_DIR}/runtime-env.sh" ]]; then
   CONFIG_JSON="${OPENCLAW_CONFIG_JSON:-${PROFILE_ROOT}/openclaw.json}"
   CRON_JOBS_JSON="${OPENCLAW_CRON_JOBS_JSON:-${PROFILE_ROOT}/cron/jobs.json}"
 fi
+if [[ -z "${OPENCLAW_CRON_JOBS_JSON:-}" || ! -f "${CRON_JOBS_JSON}" ]]; then
+  CRON_JOBS_JSON="$(python3 - "${PROFILE_ROOT}" <<'PY' 2>/dev/null || printf '%s/cron/jobs.json' "${PROFILE_ROOT}"
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.home() / ".openclaw" / "ops"))
+import openclaw_ops_paths  # noqa: E402
+
+print(openclaw_ops_paths.resolve_cron_jobs_json(Path(sys.argv[1])))
+PY
+)"
+fi
 RAGFLOW_ENV_FILE="${DEEP_RESEARCH_RAGFLOW_ENV_FILE:-${WORKSPACE_ROOT}/deep-research/config/ragflow.local.env}"
 if [[ -f "${RAGFLOW_ENV_FILE}" ]]; then
   set -a
@@ -93,6 +107,26 @@ if [[ -f "${CONFIG_JSON}" ]]; then
     }
   ' "${CONFIG_JSON}")"
 fi
+expected_model_chain="$(python3 - <<'PY' 2>/dev/null || printf '{}'
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.home() / ".openclaw" / "ops"))
+import openclaw_apply_model_route_contract as router  # noqa: E402
+
+route = router.load_active_contract(router.CONTRACT_PATH)
+chat = route.get("chat", {}) if isinstance(route.get("chat"), dict) else {}
+print(json.dumps({
+    "profile": route.get("_name"),
+    "primary": chat.get("primary"),
+    "fallbacks": chat.get("fallbacks", []),
+}, ensure_ascii=False))
+PY
+)"
+model_route_health="$(python3 "${HOME}/.openclaw/ops/openclaw_model_health.py" --json 2>/dev/null || printf '{}')"
 
 cron_state='{"cron_contract":{},"checks":{"progress_cron_contract_ok":false,"fallback_alert_cron_contract_ok":false,"progress_cron_state_ok":false,"fallback_alert_cron_state_ok":false}}'
 CRON_STATE_SCRIPT="${SCRIPT_DIR}/deep-research-cron-state.sh"
@@ -107,6 +141,8 @@ jq -n \
   --argjson visual_assets "${visual_assets_status}" \
   --argjson search_router "${search_router_status}" \
   --argjson model "${model_contract}" \
+  --argjson expected_model_chain "${expected_model_chain}" \
+  --argjson model_route_health "${model_route_health}" \
   --argjson cron_state "${cron_state}" \
   '{
     anysearch: $anysearch,
@@ -115,6 +151,8 @@ jq -n \
     visual_assets: $visual_assets,
     search_router: $search_router,
     model_contract: $model,
+    expected_model_chain: $expected_model_chain,
+    model_route_health: $model_route_health,
     cron_state: $cron_state,
     cron_contract: ($cron_state.cron_contract // {}),
     checks: {
@@ -124,16 +162,17 @@ jq -n \
       visual_assets_ready: ($visual_assets.status == "ready"),
       search_router_ready: ($search_router.status == "ready"),
       default_model_chain_ok: (
-        $model.defaults.primary == "moonshot/kimi-k2.6"
-        and ($model.defaults.fallbacks // []) == ["openai/gpt-5.5","local-summary/qwen3.5-9b-q8"]
+        $model.defaults.primary == $expected_model_chain.primary
+        and (($model.defaults.fallbacks // []) == ($expected_model_chain.fallbacks // []))
       ),
       deep_research_model_chain_ok: (
         (($model.deep_research_agents // {}) | to_entries | length) == 7
         and all(($model.deep_research_agents // {}) | to_entries[];
-          .value.primary == "moonshot/kimi-k2.6"
-          and ((.value.fallbacks // []) == ["openai/gpt-5.5","local-summary/qwen3.5-9b-q8"])
+          .value.primary == $expected_model_chain.primary
+          and ((.value.fallbacks // []) == ($expected_model_chain.fallbacks // []))
         )
       ),
+      model_route_health_ok: ($model_route_health.ok == true),
       progress_cron_ok: (
         ($cron_state.checks.progress_cron_contract_ok == true)
         and ($cron_state.checks.progress_cron_state_ok == true)

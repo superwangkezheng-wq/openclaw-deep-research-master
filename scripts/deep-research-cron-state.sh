@@ -14,6 +14,20 @@ if [[ -f "${SCRIPT_DIR}/runtime-env.sh" ]]; then
   PROFILE_ROOT="${OPENCLAW_PROFILE_ROOT:-${PROFILE_ROOT}}"
   CRON_JOBS_JSON="${OPENCLAW_CRON_JOBS_JSON:-${PROFILE_ROOT}/cron/jobs.json}"
 fi
+if [[ -z "${OPENCLAW_CRON_JOBS_JSON:-}" || ! -f "${CRON_JOBS_JSON}" ]]; then
+  CRON_JOBS_JSON="$(python3 - "${PROFILE_ROOT}" <<'PY' 2>/dev/null || printf '%s/cron/jobs.json' "${PROFILE_ROOT}"
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.home() / ".openclaw" / "ops"))
+import openclaw_ops_paths  # noqa: E402
+
+print(openclaw_ops_paths.resolve_cron_jobs_json(Path(sys.argv[1])))
+PY
+)"
+fi
 
 RUNS_ROOT="${WORKSPACE_ROOT}/deep-research/runs"
 PROGRESS_CRON_ID="f93c3f98-4bd7-4442-b417-0d7e06c6f1f5"
@@ -41,6 +55,24 @@ should_enable="false"
 if (( ${#active_task_ids} > 0 )); then
   should_enable="true"
 fi
+expected_model_chain="$(python3 - <<'PY' 2>/dev/null || printf '{}'
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.home() / ".openclaw" / "ops"))
+import openclaw_apply_model_route_contract as router  # noqa: E402
+
+route = router.load_active_contract(router.CONTRACT_PATH)
+cron = route.get("cron", {}) if isinstance(route.get("cron"), dict) else {}
+print(json.dumps({
+    "model": cron.get("model"),
+    "fallbacks": cron.get("fallbacks", []),
+}, ensure_ascii=False))
+PY
+)"
 
 cron_contract='{}'
 if [[ -f "${CRON_JOBS_JSON}" ]]; then
@@ -77,11 +109,12 @@ jq -n \
   --argjson active_task_ids "${active_json}" \
   --argjson should_enable_monitoring "${should_enable}" \
   --argjson cron "${cron_contract}" \
+  --argjson expected_model_chain "${expected_model_chain}" \
   'def contract_ok($job):
      ($job.exists == true)
      and ($job.everyMs == 300000)
-     and ($job.model == "moonshot/kimi-k2.6")
-     and (($job.fallbacks // []) == ["openai/gpt-5.5","local-summary/qwen3.5-9b-q8"])
+     and ($job.model == $expected_model_chain.model)
+     and (($job.fallbacks // []) == ($expected_model_chain.fallbacks // []))
      and (($job.toolsAllow // []) == ["exec"])
      and ($job.delivery.accountId == "deep-research-master");
    {
@@ -92,6 +125,7 @@ jq -n \
      active_task_ids: $active_task_ids,
      active_run_count: ($active_task_ids | length),
      should_enable_monitoring: $should_enable_monitoring,
+     expected_model_chain: $expected_model_chain,
      cron_contract: $cron,
      checks: {
        progress_cron_contract_ok: contract_ok($cron.progress_report),

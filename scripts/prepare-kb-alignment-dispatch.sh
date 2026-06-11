@@ -19,6 +19,7 @@ PROMPT_MD="${KB_ROOT}/dispatch_to_kb_alignment.prompt.md"
 NOW="$(date '+%Y-%m-%dT%H:%M:%S%z')"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 source "${SCRIPT_DIR}/json-file-utils.sh"
+MODEL_FALLBACK_POLICY="$(zsh "${SCRIPT_DIR}/render-model-fallback-policy.sh" "kb_alignment_status.json and mention it in kb_packet.md")"
 
 required_files=(
   "${CLARIFICATION_ROOT}/task_spec.md"
@@ -96,12 +97,7 @@ Write or overwrite these files under ${KB_ROOT}/:
 14. wiki/log.md
 15. wiki/wiki_lint.md
 
-## Model Fallback Policy
-
-1. Runtime model order is Kimi -> CodePlan -> local.
-2. Kimi is the primary research-quality model; CodePlan is the first fallback; local is last-resort fallback only.
-3. If fallback occurs or is suspected, record the landing layer in kb_alignment_status.json and mention it in kb_packet.md.
-4. Do not lower evidence, structure, or source-quality standards because of fallback; mark unresolved items explicitly.
+${MODEL_FALLBACK_POLICY}
 
 ## Rules
 

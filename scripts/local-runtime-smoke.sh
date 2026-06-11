@@ -51,11 +51,8 @@ check_json_command() {
   rm -f /tmp/deep-research-smoke.json /tmp/deep-research-smoke.err
 }
 
-check_json_command "kimi" '.ok == true or .text or .message or .content' \
-  openclaw infer model run --local --model moonshot/kimi-k2.6 --prompt "Reply OK only." --json
-
-check_json_command "codeplan" '.ok == true or .text or .message or .content' \
-  openclaw infer model run --local --model openai/gpt-5.5 --prompt "Reply OK only." --json
+check_json_command "model-route-live-smoke" '.ok == true and .health == "ok"' \
+  python3 "${HOME}/.openclaw/ops/openclaw_apply_model_route_contract.py" --live-smoke --json
 
 check_json_command "tavily" '.ok == true or .results or .items' \
   openclaw infer web search --provider tavily --query "OpenAI" --limit 1 --json

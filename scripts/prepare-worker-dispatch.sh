@@ -23,6 +23,7 @@ PROMPT_MD="${WORKER_ROOT}/dispatch_to_worker.prompt.md"
 NOW="$(date '+%Y-%m-%dT%H:%M:%S%z')"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 source "${SCRIPT_DIR}/json-file-utils.sh"
+MODEL_FALLBACK_POLICY="$(zsh "${SCRIPT_DIR}/render-model-fallback-policy.sh" "worker_status.json and mention it in escalation.md")"
 source "${SCRIPT_DIR}/task-pack-contract.sh"
 source "${SCRIPT_DIR}/search-router-contract.sh"
 
@@ -159,12 +160,7 @@ worker_status.json must be written before the first external search and updated 
 Use status=running with phase while work is in progress, and only use completed, completed_with_conflicts, needs_replan, or blocked for terminal status.
 For terminal handoff, worker_status.json must include started_at, updated_at, and checkpoint_history with at least a started checkpoint and a terminal checkpoint. Each checkpoint must include phase and updated_at.
 
-## Model Fallback Policy
-
-1. Runtime model order is Kimi -> CodePlan -> local.
-2. Kimi is the primary research-quality model; CodePlan is the first fallback; local is last-resort fallback only.
-3. If fallback occurs or is suspected, record the landing layer in worker_status.json and mention it in escalation.md.
-4. Do not lower evidence, structure, or source-quality standards because of fallback; mark unresolved items explicitly.
+${MODEL_FALLBACK_POLICY}
 
 ## Rules
 

@@ -8,6 +8,7 @@ SESSION_BASE="${OPENCLAW_AGENT_SESSION_BASE:-${HOME}/.openclaw/agents}"
 WORKSPACE_ROOT="${OPENCLAW_WORKSPACE:-${HOME}/.openclaw/workspace-deep-research-master}"
 RUNS_ROOT="${WORKSPACE_ROOT}/deep-research/runs"
 MAX_ALERTS="${OPENCLAW_FALLBACK_ALERT_MAX:-12}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 now_epoch=$(date +%s)
 
 WATCH_AGENTS=(
@@ -22,10 +23,13 @@ WATCH_AGENTS=(
 
 model_layer() {
   case "$1" in
+    volcengine-plan/ark-code-latest)
+      printf '%s\n' "Volcengine Ark Code Latest"
+      ;;
     moonshot/kimi-k2.6)
       printf '%s\n' "Kimi"
       ;;
-    openai/gpt-5.5)
+    codex/gpt-5.5|openai/gpt-5.5)
       printf '%s\n' "CodePlan"
       ;;
     local-summary/qwen3.5-9b-q8)
@@ -129,7 +133,7 @@ for agent in "${WATCH_AGENTS[@]}"; do
     [[ "${selected_ref}" != "${active_ref}" ]] || continue
 
     case "${active_ref}" in
-      openai/gpt-5.5|local-summary/qwen3.5-9b-q8) ;;
+      codex/gpt-5.5|openai/gpt-5.5|local-summary/qwen3.5-9b-q8) ;;
       *) continue ;;
     esac
 
@@ -149,7 +153,7 @@ for agent in "${WATCH_AGENTS[@]}"; do
     codeplan_observed="no"
     for observed_ref in "${observed_refs[@]}"; do
       chain_layers+=("$(model_layer "${observed_ref}")")
-      [[ "${observed_ref}" == "openai/gpt-5.5" ]] && codeplan_observed="yes"
+      [[ "${observed_ref}" == "codex/gpt-5.5" || "${observed_ref}" == "openai/gpt-5.5" ]] && codeplan_observed="yes"
     done
     observed_chain="${(j: -> :)chain_layers}"
     [[ -n "${observed_chain}" ]] || observed_chain="${selected_ref} -> ${active_ref}"
@@ -183,6 +187,7 @@ if (( ${#alert_lines} == 0 )); then
 fi
 
 mv "${tmp_state}" "${STATE_FILE}"
+policy_text="$(zsh "${SCRIPT_DIR}/render-model-fallback-policy.sh" "the stage status artifact and the main markdown output" 2>/dev/null || true)"
 
 cat <<EOF
 ⚠️ 深度研究模型 fallback 告警
@@ -190,6 +195,8 @@ cat <<EOF
 检测到 deep research 链路发生模型 fallback：
 ${(F)alert_lines}
 
-当前策略：Kimi -> CodePlan -> 本地。请优先关注是否落到了本地；本地只作为最后兜底，不作为正常研究质量模型。单次最多显示 ${MAX_ALERTS} 条新事件。
+${policy_text}
+
+请优先关注是否落到了最后兜底层；最后兜底只用于保活，不作为正常研究质量模型。单次最多显示 ${MAX_ALERTS} 条新事件。
 如果看到 codeplan_observed=no，说明该 session 未观察到 CodePlan 中间层，应优先复核是否需要按 CodePlan 重跑。
 EOF

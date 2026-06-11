@@ -19,6 +19,7 @@ PROMPT_MD="${DIRECTOR_ROOT}/dispatch_to_director.prompt.md"
 NOW="$(date '+%Y-%m-%dT%H:%M:%S%z')"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 source "${SCRIPT_DIR}/json-file-utils.sh"
+MODEL_FALLBACK_POLICY="$(zsh "${SCRIPT_DIR}/render-model-fallback-policy.sh" "director_status.json and mention it in activity_history.md")"
 
 required_files=(
   "${RUN_ROOT}/01_clarification/task_spec.md"
@@ -96,12 +97,7 @@ Write or overwrite these files under ${DIRECTOR_ROOT}/:
 12. handoff_to_worker.json
 13. worker_task_packs/
 
-## Model Fallback Policy
-
-1. Runtime model order is Kimi -> CodePlan -> local.
-2. Kimi is the primary research-quality model; CodePlan is the first fallback; local is last-resort fallback only.
-3. If fallback occurs or is suspected, record the landing layer in director_status.json and mention it in activity_history.md.
-4. Do not lower evidence, structure, or source-quality standards because of fallback; mark unresolved items explicitly.
+${MODEL_FALLBACK_POLICY}
 
 ## Rules
 

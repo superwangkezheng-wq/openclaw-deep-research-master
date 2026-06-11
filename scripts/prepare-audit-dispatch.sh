@@ -19,6 +19,7 @@ FINAL_STATUS_JSON="${FINAL_ROOT}/final_status.json"
 NOW="$(date '+%Y-%m-%dT%H:%M:%S%z')"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 source "${SCRIPT_DIR}/json-file-utils.sh"
+MODEL_FALLBACK_POLICY="$(zsh "${SCRIPT_DIR}/render-model-fallback-policy.sh" "audit_scorecard.json and mention it in audit_report.md")"
 
 final_revalidation="false"
 if [[ -f "${FINAL_STATUS_JSON}" ]]; then
@@ -133,12 +134,7 @@ Write or overwrite these files under ${AUDIT_ROOT}/:
 5. nice_to_fix_items.md
 6. return_route.json
 
-## Model Fallback Policy
-
-1. Runtime model order is Kimi -> CodePlan -> local.
-2. Kimi is the primary research-quality model; CodePlan is the first fallback; local is last-resort fallback only.
-3. If fallback occurs or is suspected, record the landing layer in audit_scorecard.json and mention it in audit_report.md.
-4. Do not lower evidence, structure, or source-quality standards because of fallback; mark unresolved items explicitly.
+${MODEL_FALLBACK_POLICY}
 
 ## Rules
 

@@ -129,8 +129,40 @@ default_mineru_host() {
   fi
 }
 
-env_or_prompt primary_model DEEP_RESEARCH_PRIMARY_MODEL "Primary model for OpenClaw agents" "moonshot/kimi-k2.6"
-env_or_prompt model_fallbacks DEEP_RESEARCH_MODEL_FALLBACKS "Fallback model chain, comma-separated" "openai/gpt-5.5,local-summary/qwen3.5-9b-q8"
+default_primary_model() {
+  python3 - <<'PY' 2>/dev/null || printf 'volcengine-plan/ark-code-latest'
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.home() / ".openclaw" / "ops"))
+import openclaw_apply_model_route_contract as router  # noqa: E402
+
+route = router.load_active_contract(router.CONTRACT_PATH)
+chat = route.get("chat", {}) if isinstance(route.get("chat"), dict) else {}
+print(chat.get("primary") or "volcengine-plan/ark-code-latest")
+PY
+}
+
+default_model_fallbacks() {
+  python3 - <<'PY' 2>/dev/null || printf 'codex/gpt-5.5,local-summary/qwen3.5-9b-q8'
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.home() / ".openclaw" / "ops"))
+import openclaw_apply_model_route_contract as router  # noqa: E402
+
+route = router.load_active_contract(router.CONTRACT_PATH)
+chat = route.get("chat", {}) if isinstance(route.get("chat"), dict) else {}
+print(",".join(chat.get("fallbacks", []) or ["codex/gpt-5.5", "local-summary/qwen3.5-9b-q8"]))
+PY
+}
+
+env_or_prompt primary_model DEEP_RESEARCH_PRIMARY_MODEL "Primary model for OpenClaw agents" "$(default_primary_model)"
+env_or_prompt model_fallbacks DEEP_RESEARCH_MODEL_FALLBACKS "Fallback model chain, comma-separated" "$(default_model_fallbacks)"
 env_or_prompt anysearch_key DEEP_RESEARCH_ANYSEARCH_API_KEY "AnySearch API key" "" true
 env_or_prompt tavily_key DEEP_RESEARCH_TAVILY_API_KEY "Tavily API key" "" true
 env_or_prompt ragflow_base_url DEEP_RESEARCH_RAGFLOW_BASE_URL "RAGFlow base URL" "http://127.0.0.1:9380"
