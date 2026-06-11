@@ -213,6 +213,43 @@ OPENCLAW_DISABLE_STAGE_REPORTS=true OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRI
 jq -e '.search_route.primary_backend == "anysearch" and (.search_route.route_hash | length) > 0 and .search_backend_preference[0] == "anysearch"' "${run}/04_worker_execution/workers/W1/task_pack.json" >/dev/null || fail "worker dispatch did not inject search route"
 rm -rf "${tmp_root}"
 
+echo "4b/33 search router treats split lane target as lane total"
+tmp_root="$(mktemp -d /tmp/dr-contract-router-split.XXXXXX)"
+run="${tmp_root}/deep-research/runs/t3split"
+director="${run}/03_research_director"
+mkdir -p "${run}/01_clarification" "${director}/worker_task_packs"
+cat > "${run}/01_clarification/task_spec.md" <<'EOF'
+# Task Spec
+## Search Budget
+- selected search depth profile: standard
+EOF
+cat > "${director}/search_strategy.json" <<'EOF'
+{
+  "search_depth_profile": "standard",
+  "search_backend_recommendation": [{"backend":"anysearch","priority":"primary"},{"backend":"tavily","priority":"fallback"}],
+  "lane_matrix": {
+    "official_primary": {"keywords":["a"],"target_sources":20,"search_depth":"standard"},
+    "technical_evaluation": {"keywords":["a"],"target_sources":10,"search_depth":"standard"},
+    "market_industry": {"keywords":["a"],"target_sources":10,"search_depth":"standard"},
+    "competitor_action": {"keywords":["a"],"target_sources":10,"search_depth":"standard"},
+    "community_signal": {"keywords":["a"],"target_sources":10,"search_depth":"standard"},
+    "counter_evidence": {"keywords":["a"],"target_sources":10,"search_depth":"standard"}
+  }
+}
+EOF
+pack_json='{"director_status":"ready_for_workers","worker_task_packs":[]}'
+for item in "W1a official_primary" "W1b official_primary" "W2 technical_evaluation" "W3 market_industry" "W4 competitor_action" "W5 community_signal" "W6 counter_evidence"; do
+  pack_id="${item%% *}"
+  lane="${item#* }"
+  pack_file="worker_task_packs/${pack_id}.json"
+  write_worker_pack "${director}/${pack_file}" "${pack_id}" "${lane}"
+  pack_json="$(printf '%s' "${pack_json}" | jq --arg pack_id "${pack_id}" --arg lane "${lane}" --arg file "${pack_file}" '.worker_task_packs += [{pack_id:$pack_id,lane:$lane,file:$file,target_candidate_sources:10}]')"
+done
+printf '%s\n' "${pack_json}" > "${director}/handoff_to_worker.json"
+OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/build-search-router-plan.sh" t3split > "${OUT}"
+jq -e '.router_status == "ready" and .worker_count == 7 and .total_target_candidate_sources == 70 and ([.routes[] | select(.lane == "official_primary") | .target_candidate_sources] | add == 20) and all(.routes[]; .target_candidate_sources == 10)' "${director}/search_router_plan.json" >/dev/null || fail "split lane router target handling invalid"
+rm -rf "${tmp_root}"
+
 echo "5/33 lane coverage requires all standard lanes or explicit mapping"
 tmp_root="$(mktemp -d /tmp/dr-contract-lanes.XXXXXX)"
 director="${tmp_root}/director"
@@ -1087,5 +1124,217 @@ jq -e '.business.status == "skipped_remote_only" and .business.dataset_id == "ds
 [[ -f "${tmp_root}/deep-research/reports/business-sync-report.latest.json" ]] || fail "REMOTE_ONLY business report missing"
 [[ -f "${tmp_root}/deep-research/reports/style-sync-report.latest.json" ]] || fail "REMOTE_ONLY style report missing"
 rm -rf "${tmp_root}"
+
+echo "34/42 watchdog detects stale worker and rebuilds missing evidence index"
+tmp_root="$(mktemp -d /tmp/dr-contract-watchdog.XXXXXX)"
+run="${tmp_root}/deep-research/runs/t34"
+worker="${run}/04_worker_execution/workers/W1"
+mkdir -p "${worker}"
+cat > "${run}/stage_status.json" <<'EOF'
+{"task_id":"t34","current_stage":"WORKER_EXECUTING","status":"in_progress","owner":"01_master-controller","waiting_on":"04_worker_execution"}
+EOF
+cat > "${worker}/task_pack.json" <<'EOF'
+{"pack_id":"W1","lane":"official_primary","target_candidate_sources":10}
+EOF
+cat > "${worker}/worker_status.json" <<'EOF'
+{"worker_id":"W1","status":"running","updated_at":"2026-01-01T00:00:00+0800","sources_examined":0,"open_conflicts":[]}
+EOF
+OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_WATCHDOG_STALE_SECONDS=1 zsh "${SCRIPT_ROOT}/deep-research-watchdog.sh" t34 > "${OUT}"
+jq -e '.summary.has_blocking_issue == true and any(.issues[]; .code == "worker_status_stale")' "${OUT}" >/dev/null || fail "watchdog did not detect stale worker"
+jq '.status = "completed" | .updated_at = "2026-06-01T00:05:00+0800" | .sources_examined = 2' "${worker}/worker_status.json" > "${tmp_root}/worker.tmp"
+mv "${tmp_root}/worker.tmp" "${worker}/worker_status.json"
+OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/deep-research-watchdog.sh" t34 --apply > "${OUT}"
+[[ -s "${run}/04_worker_execution/evidence_index.json" ]] || fail "watchdog apply did not rebuild evidence index"
+jq -e '.summary.worker_count == 1 and .summary.completed_workers == 1' "${run}/04_worker_execution/evidence_index.json" >/dev/null || fail "rebuilt evidence index summary invalid"
+assert_eq "$(jq -r '.current_stage' "${run}/stage_status.json")" "WORKER_RESULTS_READY" "watchdog evidence rebuild stage"
+rm -rf "${tmp_root}"
+
+echo "35/42 ready worker listing honors dependencies and completed packs"
+tmp_root="$(mktemp -d /tmp/dr-contract-ready-workers.XXXXXX)"
+run="${tmp_root}/deep-research/runs/t35"
+director="${run}/03_research_director"
+exec_root="${run}/04_worker_execution"
+mkdir -p "${director}" "${exec_root}"
+cat > "${director}/handoff_to_worker.json" <<'EOF'
+{
+  "worker_task_packs": [
+    {"pack_id":"W1","lane":"official_primary","file":"worker_task_packs/W1.json"},
+    {"pack_id":"W2","lane":"market_industry","file":"worker_task_packs/W2.json"},
+    {"pack_id":"W3","lane":"counter_evidence","file":"worker_task_packs/W3.json"}
+  ]
+}
+EOF
+cat > "${director}/wave_plan.json" <<'EOF'
+{"waves":[{"packs":[{"pack_id":"W1"},{"pack_id":"W2","depends_on":["W1"]},{"pack_id":"W3","depends_on":["W2"]}]}]}
+EOF
+cat > "${exec_root}/evidence_index.json" <<'EOF'
+{"workers":[{"worker_id":"W1","status":"completed"},{"worker_id":"W2","status":"pending"}]}
+EOF
+OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/list-ready-worker-packs.sh" t35 > "${OUT}"
+jq -e '.summary.ready == 1 and .ready[0].pack_id == "W2" and .summary.waiting == 1 and .waiting[0].pack_id == "W3" and .summary.completed == 1' "${OUT}" >/dev/null || fail "ready worker planner did not honor dependencies"
+rm -rf "${tmp_root}"
+
+echo "36/42 model fallback telemetry detects quota errors and lowers concurrency"
+tmp_root="$(mktemp -d /tmp/dr-contract-fallback.XXXXXX)"
+session_root="${tmp_root}/agents/deep-research-worker/sessions"
+run="${tmp_root}/deep-research/runs/t36"
+mkdir -p "${session_root}" "${run}/04_worker_execution/workers/W1"
+cat > "${session_root}/quota.jsonl" <<'EOF'
+{"task_id":"t36","error":"AccountQuotaExceeded","status":429,"message":"quota reached, fallback selected"}
+EOF
+cat > "${run}/04_worker_execution/workers/W1/worker_status.json" <<'EOF'
+{"worker_id":"W1","status":"completed","model_chain":["volcengine/k2.6","openai/gpt-5.5"],"fallback_layer_used":"quota_fallback"}
+EOF
+OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_AGENT_SESSION_BASE="${tmp_root}/agents" zsh "${SCRIPT_ROOT}/collect-model-fallback-events.sh" t36 --write > "${OUT}"
+jq -e '.summary.fallback_detected == true and (.summary.count >= 2)' "${OUT}" >/dev/null || fail "fallback telemetry did not detect quota events"
+[[ -s "${run}/model_fallback_events.jsonl" ]] || fail "fallback telemetry did not write jsonl"
+OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_AGENT_SESSION_BASE="${tmp_root}/agents" zsh "${SCRIPT_ROOT}/model-quota-preflight.sh" t36 > "${OUT}"
+jq -e '.fallback_expected == true and .recommended_concurrency == "low"' "${OUT}" >/dev/null || fail "quota preflight did not lower concurrency"
+rm -rf "${tmp_root}"
+
+echo "37/42 director contract repair normalizes legacy lanes and worker handoff"
+tmp_root="$(mktemp -d /tmp/dr-contract-repair.XXXXXX)"
+director="${tmp_root}/deep-research/runs/t37/03_research_director"
+mkdir -p "${director}/worker_task_packs"
+cat > "${director}/search_strategy.json" <<'EOF'
+{
+  "search_depth_profile":"standard",
+  "lanes":[
+    {"lane":"official_primary","keywords":["a"],"target_sources":10},
+    {"lane":"market_industry","keywords":["b"],"target_sources":10}
+  ]
+}
+EOF
+cat > "${director}/handoff_to_worker.json" <<'EOF'
+{"director_status":"ready","worker_task_packs":[]}
+EOF
+echo '{"status":"ready"}' > "${director}/director_status.json"
+write_worker_pack "${director}/worker_task_packs/W1.json" "W1" "official_primary"
+write_worker_pack "${director}/worker_task_packs/W2.json" "W2" "market_industry"
+OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/repair-director-contracts.sh" t37 > "${OUT}"
+jq -e '.lane_matrix.official_primary.target_sources == 10 and .search_backend_recommendation[0].backend == "anysearch"' "${director}/search_strategy.json" >/dev/null || fail "repair did not normalize search strategy"
+jq -e '.director_status == "ready_for_workers" and (.worker_task_packs | length) == 2' "${director}/handoff_to_worker.json" >/dev/null || fail "repair did not normalize worker handoff"
+assert_eq "$(jq -r '.status' "${director}/director_status.json")" "ready_for_workers" "repair director status"
+[[ -s "${director}/contract_repair_log.md" ]] || fail "repair log missing"
+rm -rf "${tmp_root}"
+
+echo "38/42 run dashboard and process audit reports are generated"
+tmp_root="$(mktemp -d /tmp/dr-contract-dashboard.XXXXXX)"
+run="${tmp_root}/deep-research/runs/t38"
+mkdir -p "${run}/04_worker_execution/workers/W1"
+cat > "${run}/stage_status.json" <<'EOF'
+{"task_id":"t38","current_stage":"WORKER_EXECUTING","status":"in_progress","owner":"01_master-controller","waiting_on":"04_worker_execution"}
+EOF
+cat > "${run}/stage_events.jsonl" <<'EOF'
+{"timestamp":"2026-06-01T10:00:00+0800","stage":"CLARIFYING"}
+{"timestamp":"2026-06-01T10:10:00+0800","stage":"READY_FOR_WORKERS"}
+EOF
+cat > "${run}/04_worker_execution/workers/W1/worker_status.json" <<'EOF'
+{"worker_id":"W1","status":"running","updated_at":"2026-01-01T00:00:00+0800"}
+EOF
+OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_WATCHDOG_STALE_SECONDS=1 zsh "${SCRIPT_ROOT}/generate-run-dashboard.sh" t38 --write > "${OUT}"
+dashboard_path="$(cat "${OUT}")"
+[[ -s "${dashboard_path}" ]] || fail "run dashboard missing"
+grep -q "Deep Research Run Dashboard" "${dashboard_path}" || fail "run dashboard title missing"
+grep -q "worker_status_stale" "${dashboard_path}" || fail "run dashboard missing watchdog issue"
+OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/generate-process-audit-report.sh" t38 --write > "${OUT}"
+audit_path="$(cat "${OUT}")"
+[[ -s "${audit_path}" ]] || fail "process audit report missing"
+grep -q "Stage Timeline" "${audit_path}" || fail "process audit timeline missing"
+rm -rf "${tmp_root}"
+
+echo "39/42 customer delivery package includes manifest, final assets, and operations audit"
+tmp_root="$(mktemp -d /tmp/dr-contract-package.XXXXXX)"
+run="${tmp_root}/deep-research/runs/t39"
+final="${run}/06_final_delivery"
+mkdir -p "${final}/visual_assets"
+echo '{"task_id":"t39","current_stage":"DELIVERABLE_READY","status":"in_progress"}' > "${run}/stage_status.json"
+for f in exec_summary.md final_delivery.md ppt_outline.md business_insights.md action_plan.md visual_asset_log.md; do echo "# ${f}" > "${final}/${f}"; done
+echo '{"status":"ready"}' > "${final}/final_status.json"
+echo '{"figures":[]}' > "${final}/visual_asset_plan.json"
+echo '<svg><text>x</text></svg>' > "${final}/visual_assets/F1.svg"
+OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/package-customer-delivery.sh" t39 > "${OUT}"
+package_dir="$(cat "${OUT}")"
+[[ -s "${package_dir}/MANIFEST.json" ]] || fail "customer package manifest missing"
+[[ -s "${package_dir}/final_delivery/final_delivery.md" ]] || fail "customer package final delivery missing"
+[[ -s "${package_dir}/final_delivery/visual_assets/F1.svg" ]] || fail "customer package visual asset missing"
+jq -e '.package_type == "deep-research-customer-delivery" and (.files | index("final_delivery/final_delivery.md"))' "${package_dir}/MANIFEST.json" >/dev/null || fail "customer package manifest invalid"
+rm -rf "${tmp_root}"
+
+echo "40/42 setup self-check report summarizes install and runtime contracts"
+tmp_root="$(mktemp -d /tmp/dr-contract-setup-report.XXXXXX)"
+mkdir -p "${tmp_root}/deep-research/config" "${tmp_root}/deep-research/reports"
+cat > "${tmp_root}/deep-research/config/install.summary.local.json" <<'EOF'
+{"mode":"cloud","sudo_required":false,"core_scripts_require_zsh":true}
+EOF
+OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/generate-setup-self-check-report.sh" "${tmp_root}/deep-research/reports/setup-self-check.md" > "${OUT}"
+setup_report="$(cat "${OUT}")"
+[[ -s "${setup_report}" ]] || fail "setup self-check report missing"
+grep -q "setup_mode: cloud" "${setup_report}" || fail "setup report missing cloud mode"
+grep -q "core_scripts_require_zsh: true" "${setup_report}" || fail "setup report missing zsh boundary"
+rm -rf "${tmp_root}"
+
+echo "41/42 final prompt dispatch remains task-generic and avoids historical Huawei/Lenovo leakage"
+tmp_root="$(mktemp -d /tmp/dr-contract-final-prompt.XXXXXX)"
+run="${tmp_root}/deep-research/runs/t41"
+mkdir -p "${run}/00_intake" "${run}/01_clarification" "${run}/02_kb_alignment" "${run}/03_research_director" "${run}/04_worker_execution" "${run}/05_audit" "${run}/06_final_delivery"
+cat > "${run}/01_clarification/task_spec.md" <<'EOF'
+# Task Spec
+
+- topic: 新能源汽车出海售后服务网络策略
+- reader: 汽车行业服务运营负责人
+- requested_output: final_delivery.md, exec_summary.md, ppt_outline.md
+- selected search depth profile: standard
+EOF
+cat > "${run}/01_clarification/delivery_type_spec.json" <<'EOF'
+{"delivery_type":"business_strategy_report","reader":"汽车行业服务运营负责人","tone":"professional"}
+EOF
+echo '{"current_stage":"READY_FOR_DELIVERY","status":"in_progress"}' > "${run}/stage_status.json"
+echo "# KB packet" > "${run}/02_kb_alignment/kb_packet.md"
+echo "# Research synthesis" > "${run}/03_research_director/research_synthesis.md"
+echo '{"workers":[]}' > "${run}/04_worker_execution/evidence_index.json"
+echo "# Evidence fused" > "${run}/04_worker_execution/evidence_fused.md"
+echo "# Audit report" > "${run}/05_audit/audit_report.md"
+echo '{"status":"pass","blocking_items":[]}' > "${run}/05_audit/audit_scorecard.json"
+echo "# Must fix\n\n- none" > "${run}/05_audit/must_fix_items.md"
+echo "# Nice to fix\n\n- none" > "${run}/05_audit/nice_to_fix_items.md"
+cat > "${run}/05_audit/return_route.json" <<'EOF'
+{"status":"pass","route_to":"final_delivery"}
+EOF
+OPENCLAW_DISABLE_STAGE_REPORTS=true OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/prepare-final-dispatch.sh" t41 > "${OUT}"
+prompt="$(cat "${OUT}")"
+[[ -s "${prompt}" ]] || fail "final dispatch prompt missing"
+grep -q "task_spec.md" "${prompt}" || fail "final dispatch did not point to task spec"
+if rg -qi '华为|联想|韬定律|tau density|LogicFolding|混合键合|TSV|Personal ontology|knowledge ontology|Recall/PCC|LLM-as-judge|edge-cloud|dynamic-ontology' "${prompt}"; then
+  fail "final dispatch leaked historical project-specific terms"
+fi
+rm -rf "${tmp_root}"
+
+echo "42/42 commercial stability scripts pass shell syntax in project and live workspaces"
+zsh -n \
+  "${SCRIPT_ROOT}/deep-research-watchdog.sh" \
+  "${SCRIPT_ROOT}/rebuild-evidence-index.sh" \
+  "${SCRIPT_ROOT}/list-ready-worker-packs.sh" \
+  "${SCRIPT_ROOT}/collect-model-fallback-events.sh" \
+  "${SCRIPT_ROOT}/model-quota-preflight.sh" \
+  "${SCRIPT_ROOT}/repair-director-contracts.sh" \
+  "${SCRIPT_ROOT}/generate-run-dashboard.sh" \
+  "${SCRIPT_ROOT}/generate-process-audit-report.sh" \
+  "${SCRIPT_ROOT}/package-customer-delivery.sh" \
+  "${SCRIPT_ROOT}/generate-setup-self-check-report.sh" \
+  "${SCRIPT_ROOT}/finalize-deep-research-run.sh"
+live_scripts="/Users/lenovo/.openclaw/workspace-deep-research-master/scripts"
+zsh -n \
+  "${live_scripts}/deep-research-watchdog.sh" \
+  "${live_scripts}/rebuild-evidence-index.sh" \
+  "${live_scripts}/list-ready-worker-packs.sh" \
+  "${live_scripts}/collect-model-fallback-events.sh" \
+  "${live_scripts}/model-quota-preflight.sh" \
+  "${live_scripts}/repair-director-contracts.sh" \
+  "${live_scripts}/generate-run-dashboard.sh" \
+  "${live_scripts}/generate-process-audit-report.sh" \
+  "${live_scripts}/package-customer-delivery.sh" \
+  "${live_scripts}/generate-setup-self-check-report.sh" \
+  "${live_scripts}/finalize-deep-research-run.sh"
 
 echo "PASS: deep research contracts"

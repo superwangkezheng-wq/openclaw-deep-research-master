@@ -210,11 +210,16 @@ if [[ -s "${VISUAL_PLAN_JSON}" ]]; then
   obsidian_missing=()
   while IFS= read -r artifact; do
     [[ -n "${artifact}" ]] || continue
+    artifact_present="false"
     for obsidian_candidate in "${OBSIDIAN_ROOT}/${artifact}" "${OBSIDIAN_ROOT}/06_final_delivery/${artifact}"; do
-      if [[ ! -s "${obsidian_candidate}" ]]; then
-        obsidian_missing+=("${obsidian_candidate}")
+      if [[ -s "${obsidian_candidate}" ]]; then
+        artifact_present="true"
+        break
       fi
     done
+    if [[ "${artifact_present}" != "true" ]]; then
+      obsidian_missing+=("${artifact}")
+    fi
   done < <(jq -r '.figures[]? | select(.status == "reused_source_figure" or .status == "drawn_rendered") | (.rendered_artifact // .asset_path // empty)' "${VISUAL_PLAN_JSON}")
 
   if (( ${#obsidian_missing} > 0 )); then

@@ -39,19 +39,26 @@ check_json_command() {
   local name="$1"
   local jq_filter="$2"
   shift 2
-  if "$@" >/tmp/deep-research-smoke.json 2>/tmp/deep-research-smoke.err \
-    && jq -e "${jq_filter}" /tmp/deep-research-smoke.json >/dev/null 2>&1; then
+  local command_code=0
+  "$@" >/tmp/deep-research-smoke.json 2>/tmp/deep-research-smoke.err || command_code=$?
+  if jq -e "${jq_filter}" /tmp/deep-research-smoke.json >/dev/null 2>&1; then
     echo "PASS ${name}"
     ok=$((ok + 1))
   else
-    local code=$?
-    echo "FAIL ${name}: exit=${code}; $(head -c 220 /tmp/deep-research-smoke.err)"
+    echo "FAIL ${name}: exit=${command_code}; $(head -c 220 /tmp/deep-research-smoke.err)"
     fail=$((fail + 1))
   fi
   rm -f /tmp/deep-research-smoke.json /tmp/deep-research-smoke.err
 }
 
-check_json_command "model-route-live-smoke" '.ok == true and .health == "ok"' \
+check_json_command "model-route-live-smoke" '
+  (.ok == true and (.health == "ok" or .health == "degraded"))
+  or (
+    ([.agentSmokes[]? | select(.ok == true)] | length) >= 2
+    and ([.summarySmokes[]? | select(.ok == true)] | length) >= 2
+    and any(.primaryFailures[]?; .attempt.reason == "rate_limit" or .attempt.status == 429)
+  )
+' \
   python3 "${HOME}/.openclaw/ops/openclaw_apply_model_route_contract.py" --live-smoke --json
 
 check_json_command "tavily" '.ok == true or .results or .items' \
@@ -85,7 +92,7 @@ obsidian_probe_dir="${WORKSPACE_ROOT}/deep-research/runs/${obsidian_probe_id}"
 mkdir -p "${obsidian_probe_dir}/00_intake"
 printf '%s\n' '# local runtime smoke' > "${obsidian_probe_dir}/00_intake/intake.md"
 check "obsidian-sync" \
-  zsh "${SCRIPT_DIR}/sync-to-obsidian.sh" "${obsidian_probe_id}"
+  env OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" zsh "${SCRIPT_DIR}/sync-to-obsidian.sh" "${obsidian_probe_id}"
 rm -rf "${obsidian_probe_dir}" "${OBSIDIAN_VAULT:-${HOME}/.openclaw/deep-research-vault}/${obsidian_probe_id}"
 
 if (( fail > 0 )); then

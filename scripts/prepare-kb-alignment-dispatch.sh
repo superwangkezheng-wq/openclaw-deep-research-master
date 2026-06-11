@@ -99,6 +99,25 @@ Write or overwrite these files under ${KB_ROOT}/:
 
 ${MODEL_FALLBACK_POLICY}
 
+## Recovery and Checkpoint Contract
+
+This dispatch may be a retry after a lost subagent context or gateway restart.
+
+1. Before deep content expansion, create or refresh all 15 Write Back paths with valid minimal skeletons.
+2. For JSON files, write syntactically valid JSON with task_id, status, updated_at, and placeholder arrays/objects needed by downstream readers.
+3. For Markdown files, write a short header plus explicit "in_progress" placeholder sections.
+4. Create the wiki/ directory before writing wiki files.
+5. After skeleton creation, fill content in chunks in this order:
+   - authority, terminology, conflicts
+   - source_scope and kb_packet
+   - research_reference_context and research_reference_log
+   - source_confirmation_packet markdown/json
+   - wiki files
+   - kb_alignment_status and handoff_to_director
+6. Preserve useful content from existing source_authority.json and terminology_map.json only after validating it against the current task_spec.md.
+7. If interrupted after skeleton creation, the next retry must continue from existing files instead of starting from memory.
+8. At final completion, set kb_alignment_status.json status to ready, ready_with_conflicts, waiting_user, or blocked. Do not leave it as in_progress.
+
 ## Rules
 
 1. Prioritize internal context alignment before external research.

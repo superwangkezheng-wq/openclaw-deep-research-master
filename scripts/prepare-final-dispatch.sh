@@ -125,12 +125,12 @@ ${MODEL_FALLBACK_POLICY}
 1. Read audit constraints before writing.
 2. Read delivery_type_spec.json and adapt final_delivery.md to the requested material type.
 3. If delivery_type_spec.json marks the type as custom, preserve its declared reader, purpose, structure, tone, and length constraints.
-4. Treat research_synthesis.md as pre-W4 for Lenovo mapping; consume W4_lenovo_mapping from evidence_fused.md directly.
-5. Close all must-fix items in must_fix_items.md, especially MF1, MF2-partB, MF3, and MF4.
-6. Remove or replace old unsourced Lenovo assertions such as ISG revenue growth 30% and Windows AI PC share 31% unless W4 evidence supports them.
-7. Add a visible source-tier system for Huawei key numbers: official claim, paper self-report, media reconstruction, and pending independent verification.
-8. Explain density-equivalent nm versus lithography-node nm every time "equivalent nm" is used.
-9. Include 5-10 figure-ready sections in final_delivery.md and ppt_outline.md, including a source timeline, tau concept frame, density-equivalent vs lithography-node comparison, boundary matrix, industry ecosystem, and Lenovo business mapping.
+4. Treat evidence_fused.md and worker evidence packets as the authoritative evidence surface; use research_synthesis.md only as a planning/synthesis aid when it agrees with audited worker evidence.
+5. Close all blocking items in must_fix_items.md. If must_fix_items.md says there are no blocking items, preserve the audit notes as final-writing constraints.
+6. Do not include claims that are unsupported by the worker evidence. If a claim is plausible but unverified, label it as a hypothesis, design choice, or open risk rather than a fact.
+7. For this task, infer the final report topic, reader, purpose, structure, tone, length, and output format from task_spec.md and delivery_type_spec.json. Do not reuse topic assumptions from previous runs.
+8. Preserve the audited boundaries from audit_report.md, audit_scorecard.json, must_fix_items.md, and return_route.json. Treat audit caveats as binding writing constraints unless the evidence files explicitly resolve them.
+9. Include the requested figure-ready and rendered visual sections only when task_spec.md, delivery_type_spec.json, audit notes, or evidence_fused.md require them. Choose tables, diagrams, roadmaps, or comparison matrices according to the current task rather than a fixed template.
 10. For every requested figure, structure diagram, flowchart, scientific schematic, or PPT visual, use the deep-research-visuals skill and produce an actual asset; do not leave only a figure-ready paragraph.
 11. Source-first visual rule: inspect cited web pages, papers, PDFs, official pages, and source artifacts for suitable existing figures. If a figure is suitable and legally reusable for this delivery context, save it under visual_assets/source_figures/ with source URL, title, citation, and license_or_usage_note.
 12. If no suitable source figure exists, or reuse is restricted/unclear/low-quality, redraw an original visual based on the research. Use deep-research-visuals as the orchestration layer: nature-figure/Python for scientific, quantitative, evidence-bearing, roadmap, matrix, radar, and multi-panel figures; draw.io for polished system/strategy panels; Mermaid for flow/timeline/sequence; PlantUML/C4 for architecture/UML; Graphviz for DAG/evidence maps; Manim for mathematical/scientific concept diagrams; Python diagrams for infrastructure; Schemdraw for circuits; Bioicons for biology/chemistry icons. Combine tools by panel when that improves the final figure; do not treat the tools as mutually exclusive.

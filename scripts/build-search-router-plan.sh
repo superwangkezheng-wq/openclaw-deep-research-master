@@ -117,9 +117,6 @@ while IFS=$'\t' read -r worker_id pack_relpath handoff_lane handoff_target; do
     echo "Worker ${worker_id} has no positive target_candidate_sources for Search Router" >&2
     exit 1
   fi
-  if [[ -n "${lane_target}" && "${lane_target}" != "null" && "${target_sources}" -lt "${lane_target}" ]]; then
-    target_sources="${lane_target}"
-  fi
 
   min_readings=$(( (target_sources * min_readings_total + min_target_sources - 1) / min_target_sources ))
   min_extractions=$(( (target_sources * min_extractions_total + min_target_sources - 1) / min_target_sources ))

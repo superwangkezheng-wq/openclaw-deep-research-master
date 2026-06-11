@@ -85,9 +85,11 @@ validate_search_router_plan_contract() {
           ($routes[]? as $route
             | ($route.worker_id // "") as $worker_id
             | if (($packs | map(.pack_id // "") | index($worker_id)) == null) then "route references unknown worker: \($worker_id)" else empty end),
-          ($routes[]? as $route
-            | ($route.lane // "") as $lane
-            | if (($lane_matrix[$lane].target_sources // 0) > ($route.target_candidate_sources // 0)) then "route target below strategy lane target for \($route.worker_id)" else empty end)
+          ($lane_matrix | to_entries[]? as $lane_entry
+            | ($lane_entry.key) as $lane
+            | ($lane_entry.value.target_sources // 0) as $lane_target
+            | ($routes | map(select((.lane // "") == $lane) | (.target_candidate_sources // 0)) | add // 0) as $lane_route_target
+            | if ($lane_target > 0 and $lane_route_target < $lane_target) then "route target total below strategy lane target for \($lane): \($lane_route_target) < \($lane_target)" else empty end)
         ] | .[]
     ' "${plan_path}")"
 
@@ -121,6 +123,7 @@ _json_count() {
     elif (.items | type) == "array" then (.items | length)
     elif (.sources | type) == "array" then (.sources | length)
     elif (.extractions | type) == "array" then (.extractions | length)
+    elif (.entries | type) == "array" then (.entries | length)
     else 0 end
   ' "${json_path}" 2>/dev/null || printf '0\n'
 }

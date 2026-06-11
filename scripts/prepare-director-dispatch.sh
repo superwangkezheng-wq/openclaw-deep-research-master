@@ -105,7 +105,7 @@ ${MODEL_FALLBACK_POLICY}
 2. Start with baseline_research_plan.md: state the simplest defensible answer skeleton, known facts, and biggest unknowns before opening waves.
 3. Do not do broad external research in this stage.
 4. Convert task and context into a clear wave plan.
-5. Write search_strategy.json with search_depth_profile, target_candidate_sources, lanes, backend preferences, and audit thresholds.
+5. Write search_strategy.json with search_depth_profile, target_candidate_sources, lanes, backend preferences, audit thresholds, and a machine-readable lane_matrix object.
 6. Use the search_depth_profile selected in task_spec.md; do not silently downgrade or upgrade it.
 7. Use the standard six lanes when search depth is standard or higher: official_primary, technical_evaluation, market_industry, competitor_action, community_signal, counter_evidence.
 8. Enforce the fixed search-budget minimums: light=24 candidate sources/8 readings/4 extractions/3 lanes; standard=60/24/12/6 lanes; deep=90/36/18/6 lanes; max=120/60/30/6 lanes plus second-wave follow-up.
@@ -122,6 +122,30 @@ ${MODEL_FALLBACK_POLICY}
 19. Treat wiki/index.md as the navigation map and wiki/log.md as the recent-change timeline.
 20. Respect the latest user clarifications in user_followups.md.
 21. Prefer simpler plans when evidence gain is small.
+
+## Machine Contract
+
+Stage 3 is not complete until these machine-readable contracts are present. Markdown companions are allowed, but they do not replace JSON dispatch files.
+
+1. search_strategy.json MUST include:
+   - search_depth_profile: one of light, standard, deep, max.
+   - search_backend_recommendation OR search_backend_preference as a non-empty array.
+   - lane_matrix as an object keyed by required lanes. For standard/deep/max, include all six lanes: official_primary, technical_evaluation, market_industry, competitor_action, community_signal, counter_evidence.
+   - lane_matrix.<lane>.keywords as a non-empty array.
+   - lane_matrix.<lane>.target_sources as the total target for that lane, not the per-worker target.
+   - lane_matrix.<lane>.search_depth as one of light, standard, deep, max.
+2. Every dispatchable worker pack MUST be valid JSON at worker_task_packs/<pack_id>.task_pack.json and MUST include:
+   - pack_id, lane, objective, search_depth_profile, target_candidate_sources.
+   - search_backend_preference as a non-empty array.
+   - anysearch as an object.
+   - query_family or search_keywords as a non-empty array.
+   - source_mix or source_priority as a non-empty array.
+   - expected_outputs as a non-empty array.
+3. handoff_to_worker.json MUST include worker_task_packs as an array of dispatchable packs:
+   - each item has pack_id, lane, file, target_candidate_sources.
+   - file points to worker_task_packs/<pack_id>.task_pack.json.
+4. director_status.json status MUST be one of ready_for_workers, ready_with_risks, waiting_user, or needs_replan.
+5. Do not list activation-gated second-wave packs in handoff_to_worker.json worker_task_packs until they are ready for immediate dispatch.
 EOF
 
 safe_jq_update_file "${STAGE_STATUS_JSON}" \

@@ -17,6 +17,7 @@ OpenClaw Deep Research Master is a production-oriented deep research workflow pa
 - **Scientific/business visuals**: uses `deep-research-visuals`, `nature-figure`, draw.io, Mermaid, PlantUML, Graphviz, Manim, Python Diagrams, Schemdraw, and Bioicons where appropriate.
 - **PDF-heavy reference ingestion**: expects MinerU-backed parsing when RAGFlow sync handles PDFs.
 - **Progress and fallback monitoring**: lifecycle-gated progress reports, stage reports, model fallback alerts, stable idempotency keys, and completed-run cron shutdown.
+- **Commercial stability operations**: watchdog, evidence-index rebuild, worker DAG readiness, director contract repair, quota-aware preflight, run dashboard, process audit report, setup self-check, and customer delivery packaging.
 - **Commercial release gates**: contract tests, runtime doctor, heartbeat smoke, local runtime smoke, acceptance gate, Obsidian sync checks, and portable packaging checks.
 
 ## Reference Projects And Positioning
@@ -122,14 +123,35 @@ See [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) for the full matrix.
 
 See [docs/INSTALLATION.md](docs/INSTALLATION.md) for cloud OpenClaw, no-sudo, `REMOTE_ONLY`, vector database, MinerU, and weaker-model setup guidance.
 
+## Commercial Stability Commands
+
+Operational commands added for production recovery and delivery:
+
+```bash
+zsh scripts/deep-research-watchdog.sh <task_id> [--apply]
+zsh scripts/rebuild-evidence-index.sh <task_id> [--update-stage]
+zsh scripts/list-ready-worker-packs.sh <task_id>
+zsh scripts/repair-director-contracts.sh <task_id>
+zsh scripts/collect-model-fallback-events.sh <task_id> [--write] [--scan-sessions]
+zsh scripts/model-quota-preflight.sh <task_id>
+zsh scripts/generate-run-dashboard.sh <task_id> --write
+zsh scripts/generate-process-audit-report.sh <task_id> --write
+zsh scripts/generate-setup-self-check-report.sh
+zsh scripts/package-customer-delivery.sh <task_id>
+zsh scripts/finalize-deep-research-run.sh <task_id>
+```
+
+The dashboard and quota preflight use fast, non-blocking defaults. Full runtime doctor checks remain available through `scripts/deep-research-runtime-doctor.sh` and `DEEP_RESEARCH_QUOTA_PREFLIGHT_FULL_DOCTOR=true`.
+
 ## Validation Status
 
-The commercial baseline was validated on 2026-06-02 with:
+The commercial baseline was validated on 2026-06-11 with:
 
-- `tests/test-contracts.sh`: `PASS 33/33`
+- `tests/test-contracts.sh`: `PASS 42/42`
+- live OpenClaw workspace contract test: `PASS 42/42`
 - `scripts/v1-release-check.sh`: `PASS`
 - non-git distribution release gate: `PASS`
-- `scripts/local-runtime-smoke.sh`: `PASS 11 checks`
+- `scripts/local-runtime-smoke.sh`: `PASS 10 checks`
 
 ## Repository Safety
 

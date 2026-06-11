@@ -59,9 +59,33 @@ requires_anysearch_trace="$(jq -r '
   ((.search_route.anysearch.preferred // .anysearch.preferred // false) or ((.search_backend_preference // []) | index("anysearch") != null))
 ' "${TASK_PACK_JSON}")"
 anysearch_trace_status="$(jq -r '
-  {
-    used: (.anysearch_used // ((.search_backends_used // []) | index("anysearch") != null) // false),
-    fallback: (.anysearch_fallback_reason // .search_backends_fallback.anysearch // "")
+  (.search_backend_used // null) as $search_backend_used_raw
+  | (if (($search_backend_used_raw // null) | type) == "object" then ($search_backend_used_raw.primary_backend // "") else ($search_backend_used_raw // "") end) as $search_backend_used
+  | (.backend_use.primary_backend // "") as $backend_use_primary
+  | ((.backend_use.anysearch // .backend_usage.anysearch // .backend_usage.anysearch_primary // "") | tostring) as $backend_usage_anysearch
+  | {
+    used: (
+      .anysearch_used
+      // (((.search_backends_used // []) | map(tostring | if startswith("anysearch") then "anysearch" else . end) | index("anysearch")) != null)
+      // (($search_backend_used == "anysearch") or ($backend_use_primary == "anysearch"))
+      // ($backend_usage_anysearch | test("used|success|primary"; "i"))
+      // (.anysearch.used == true)
+      // (.anysearch.domain_discovery_called == true)
+      // ((.anysearch.status // "") | test("success|partial"; "i"))
+      // false
+    ),
+    fallback: (
+      .anysearch_fallback_reason
+      // .search_backends_fallback.anysearch
+      // (if (($search_backend_used_raw // null) | type) == "object" then ($search_backend_used_raw.fallback_reason // "") else "" end)
+      // .backend_use.fallback_reason
+      // .backend_usage.fallback_reason
+      // .anysearch_fallback.reason
+      // .anysearch.fallback_reason
+      // .anysearch.domain_discovery.fallback
+      // ((.anysearch.fallbacks // []) | join("; "))
+      // ""
+    )
   }
   | if (.used == true or (.fallback | length) > 0) then "ok" else "missing" end
 ' "${WORKER_ROOT}/source_coverage.json")"

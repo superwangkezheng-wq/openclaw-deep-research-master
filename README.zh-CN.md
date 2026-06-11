@@ -15,6 +15,7 @@
 - **科学制图与业务图表**：通过 `deep-research-visuals`、`nature-figure`、draw.io、Mermaid、PlantUML、Graphviz、Manim、Python Diagrams、Schemdraw、Bioicons 等组合生成或校验视觉资产。
 - **PDF 参考材料解析**：RAGFlow 同步 PDF-heavy 文件夹时建议使用 MinerU parser/API，避免纯文本抽取损失版面与图表信息。
 - **进度提醒与阶段汇报**：生命周期门控的 progress heartbeat、stage report、模型 fallback 告警、飞书幂等 key、完成后自动关闭 routine cron。
+- **商业稳定性运维**：watchdog、evidence index 重建、worker DAG ready 列表、director 合同修复、quota preflight、运行看板、过程审计报告、安装自检、客户交付包。
 - **商业交付门禁**：合同测试、runtime doctor、heartbeat smoke、local runtime smoke、acceptance gate、Obsidian sync、便携路径/密钥扫描。
 
 ## 参考项目与定位
@@ -129,12 +130,31 @@ zsh scripts/local-runtime-smoke.sh
 zsh tests/test-contracts.sh
 ```
 
-2026-06-02 商业基线验证：
+商业稳定性运维命令：
 
-- 合同测试：`PASS 33/33`
+```bash
+zsh scripts/deep-research-watchdog.sh <task_id> [--apply]
+zsh scripts/rebuild-evidence-index.sh <task_id> [--update-stage]
+zsh scripts/list-ready-worker-packs.sh <task_id>
+zsh scripts/repair-director-contracts.sh <task_id>
+zsh scripts/collect-model-fallback-events.sh <task_id> [--write] [--scan-sessions]
+zsh scripts/model-quota-preflight.sh <task_id>
+zsh scripts/generate-run-dashboard.sh <task_id> --write
+zsh scripts/generate-process-audit-report.sh <task_id> --write
+zsh scripts/generate-setup-self-check-report.sh
+zsh scripts/package-customer-delivery.sh <task_id>
+zsh scripts/finalize-deep-research-run.sh <task_id>
+```
+
+运行看板和 quota preflight 默认走快速非阻塞路径。完整运行时检查仍使用 `scripts/deep-research-runtime-doctor.sh`，或通过 `DEEP_RESEARCH_QUOTA_PREFLIGHT_FULL_DOCTOR=true` 打开。
+
+2026-06-11 商业基线验证：
+
+- 合同测试：`PASS 42/42`
+- live OpenClaw workspace 合同测试：`PASS 42/42`
 - 运行时 release gate：`PASS`
 - 无 Git 分发目录 release gate：`PASS`
-- live runtime smoke：`PASS 11 checks`
+- live runtime smoke：`PASS 10 checks`
 
 ## 不应开源或打包的内容
 
