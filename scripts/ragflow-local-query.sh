@@ -111,14 +111,14 @@ if [[ ! -f "${PROFILE_FILE}" ]]; then
 fi
 
 base_url="$("${JQ_BIN}" -r --arg profile "${PROFILE}" '.profiles[$profile].base_url // empty' "${PROFILE_FILE}")"
-path="$("${JQ_BIN}" -r --arg profile "${PROFILE}" '.profiles[$profile].path // empty' "${PROFILE_FILE}")"
+endpoint_path="$("${JQ_BIN}" -r --arg profile "${PROFILE}" '.profiles[$profile].path // empty' "${PROFILE_FILE}")"
 method="$("${JQ_BIN}" -r --arg profile "${PROFILE}" '.profiles[$profile].method // "POST"' "${PROFILE_FILE}")"
 api_key_env="$("${JQ_BIN}" -r --arg profile "${PROFILE}" '.profiles[$profile].api_key_env // empty' "${PROFILE_FILE}")"
 query_field="$("${JQ_BIN}" -r --arg profile "${PROFILE}" '.profiles[$profile].query_field // "question"' "${PROFILE_FILE}")"
 top_k_field="$("${JQ_BIN}" -r --arg profile "${PROFILE}" '.profiles[$profile].top_k_field // "top_k"' "${PROFILE_FILE}")"
 dataset_ids_field="$("${JQ_BIN}" -r --arg profile "${PROFILE}" '.profiles[$profile].dataset_ids_field // "dataset_ids"' "${PROFILE_FILE}")"
 
-if [[ -z "${base_url}" || -z "${path}" ]]; then
+if [[ -z "${base_url}" || -z "${endpoint_path}" ]]; then
   echo "Profile '${PROFILE}' is missing base_url or path in ${PROFILE_FILE}" >&2
   exit 1
 fi
@@ -163,7 +163,7 @@ if [[ -n "${api_key}" ]]; then
   headers+=("-H" "Authorization: Bearer ${api_key}")
 fi
 
-request_url="${base_url%/}${path}"
+request_url="${base_url%/}${endpoint_path}"
 
 run_host_request() {
   "${CURL_BIN}" -sS -X "${method}" "${request_url}" "${headers[@]}" -d "${payload}"
@@ -180,7 +180,7 @@ run_container_request() {
     return 1
   fi
   payload_b64="$(printf '%s' "${payload}" | /usr/bin/base64 | tr -d '\n')"
-  RAGFLOW_URL="http://127.0.0.1:9380${path}" \
+  RAGFLOW_URL="http://127.0.0.1:9380${endpoint_path}" \
   RAGFLOW_METHOD="${method}" \
   RAGFLOW_AUTH_TOKEN="${auth_token}" \
   RAGFLOW_PAYLOAD_B64="${payload_b64}" \

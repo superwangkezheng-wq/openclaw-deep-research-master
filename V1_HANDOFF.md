@@ -43,6 +43,10 @@ For weaker models such as `qwen/qwen3.6`, keep `docs/INSTALLATION.md`, `docs/DEP
 - `scripts/sync-rag-reference-folders.sh` depends on `ragflow_local_kb/sync_folder_to_ragflow.sh` or `RAGFLOW_SYNC_SCRIPT`. The v1 transfer package includes the helper under `ragflow_local_kb/`.
 - Visual deliverables require the `deep-research-visuals` skill and toolchain. It composes source-first reuse, `nature-figure`/Python, draw.io (`drawio`), Mermaid CLI (`mmdc`), PlantUML (`plantuml`), Graphviz (`dot`), Manim (`manim`), Python Diagrams (`diagrams`), Schemdraw (`schemdraw`), and Bioicons (`bioicons`) by panel. The local operator machine should pass `skills/deep-research-visuals/scripts/deep-research-visuals-doctor.sh` and `${HOME}/.agents/skills/research-visuals/scripts/visual-assets-doctor.sh`.
 - Routine progress/fallback cron is not always-on. `scripts/sync-deep-research-cron-state.sh` enables it only when at least one run is active, and disables it after all runs are completed, archived, delivered, or waiting on the user.
+- On OpenClaw runtimes backed by SQLite, production lifecycle state is read and changed through the OpenClaw CLI. `OPENCLAW_CRON_JOBS_JSON` may remain available for delivery metadata, but it is not scheduling truth unless `OPENCLAW_CRON_BACKEND=json` is explicitly selected for an isolated test.
+- `scripts/deep-research-active-runs.sh` owns the active-run predicate for cron, progress, and fallback paths. Malformed or unknown run truth fails closed before scheduler writes.
+- The two routine jobs reconcile as a locked pair with preflight, delta-only writes, postcondition verification, reverse compensation, and an atomic `.monitoring_lifecycle/last-reconcile.json` receipt. `compensation_failed` means the pair may be split and must be reconciled again.
+- The system OpenClaw CLI is rejected outside the live workspace projection. A non-live CLI contract test requires an explicit fake-CLI authorization; normal fixtures use `OPENCLAW_CRON_BACKEND=json`.
 
 ## Acceptance Boundary
 
@@ -60,6 +64,7 @@ Do not package local runtime state:
 - `.openclaw/`
 - `.progress_report_log.json`
 - `.fallback_alert_log.json`
+- `.monitoring_lifecycle/`
 - `.stage_report_outbox/`
 - `.manual_audit_runs/`
 - `.manual_worker_runs/`

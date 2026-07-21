@@ -5,6 +5,7 @@
 .openclaw/
 .progress_report_log.json
 .fallback_alert_log.json
+.monitoring_lifecycle/
 .stage_report_outbox/
 .manual_audit_runs/
 .manual_worker_runs/

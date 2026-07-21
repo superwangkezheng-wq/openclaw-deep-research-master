@@ -88,6 +88,14 @@ Cron jobs should be enabled only when there is an active run:
 
 When all runs are complete, archived, delivered, or waiting on the user, routine progress/fallback cron should be disabled.
 
+The production adapter reads disabled jobs as well as enabled jobs through `openclaw cron list --all --json` and changes lifecycle state only through `openclaw cron enable|disable`. Do not edit SQLite directly. JSON cron state is reserved for contract fixtures and is selected only with `OPENCLAW_CRON_BACKEND=json`.
+
+`scripts/deep-research-active-runs.sh` is the canonical active-run reader for the cron, progress, and fallback paths. It validates every run status artifact before returning a decision. Invalid or unknown run truth is indeterminate and produces no scheduler write.
+
+The synchronizer serializes concurrent calls with `.monitoring_lifecycle/reconcile.lock`, preflights both managed jobs, changes only mismatched enabled bits, verifies the pair, and compensates in reverse order after a partial failure. The atomic `.monitoring_lifecycle/last-reconcile.json` receipt records the reason, desired/before/after states, actions, compensation, and errors. Treat `compensation_failed` as split-brain evidence; rerun reconcile after correcting the adapter failure and verify both state checks.
+
+Production CLI mutation is restricted to the live workspace projection. Source checkouts and release tests must use the JSON adapter or an explicitly authorized non-system fake CLI. A heartbeat invocation continues generating its progress or fallback output when reconciliation fails, but preserves stderr and exits nonzero after output so the scheduler retries rather than hiding the lifecycle fault.
+
 ## Packaging
 
 Do not include generated runtime state:
@@ -97,6 +105,7 @@ Do not include generated runtime state:
 - `.openclaw/`
 - `.progress_report_log.json`
 - `.fallback_alert_log.json`
+- `.monitoring_lifecycle/`
 - `.stage_report_outbox/`
 - private config files under `deep-research/config/`
 

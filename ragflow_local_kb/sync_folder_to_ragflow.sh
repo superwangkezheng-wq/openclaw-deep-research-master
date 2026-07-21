@@ -456,28 +456,28 @@ process_parse_targets() {
 
 api_request_host() {
   local method="$1"
-  local path="$2"
+  local endpoint_path="$2"
   local body="${3:-}"
   if [[ -n "${body}" ]]; then
     "${CURL_BIN}" -sS --max-time 60 -X "${method}" "${json_headers[@]}" \
       -d "${body}" \
-      "${RAGFLOW_BASE_URL%/}${path}"
+      "${RAGFLOW_BASE_URL%/}${endpoint_path}"
   else
     "${CURL_BIN}" -sS --max-time 60 -X "${method}" "${headers[@]}" \
-      "${RAGFLOW_BASE_URL%/}${path}"
+      "${RAGFLOW_BASE_URL%/}${endpoint_path}"
   fi
 }
 
 api_request_container() {
   local method="$1"
-  local path="$2"
+  local endpoint_path="$2"
   local body="${3:-}"
   local body_b64=""
   if [[ -n "${body}" ]]; then
     body_b64="$(printf '%s' "${body}" | /usr/bin/base64)"
   fi
   "${DOCKER_BIN}" exec \
-    -e "RAGFLOW_URL=http://127.0.0.1:9380${path}" \
+    -e "RAGFLOW_URL=http://127.0.0.1:9380${endpoint_path}" \
     -e "RAGFLOW_METHOD=${method}" \
     -e "RAGFLOW_AUTH_HEADER=Authorization: Bearer ${RAGFLOW_API_KEY}" \
     -e "RAGFLOW_BODY_B64=${body_b64}" \
@@ -498,10 +498,10 @@ with urllib.request.urlopen(req, timeout=60) as resp:
 
 api_request() {
   local method="$1"
-  local path="$2"
+  local endpoint_path="$2"
   local body="${3:-}"
-  if ! api_request_host "${method}" "${path}" "${body}" 2>/tmp/ragflow-folder-sync.err; then
-    api_request_container "${method}" "${path}" "${body}"
+  if ! api_request_host "${method}" "${endpoint_path}" "${body}" 2>/tmp/ragflow-folder-sync.err; then
+    api_request_container "${method}" "${endpoint_path}" "${body}"
   fi
 }
 

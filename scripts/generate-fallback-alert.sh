@@ -3,13 +3,12 @@
 set -euo pipefail
 setopt null_glob
 
-STATE_FILE="${OPENCLAW_FALLBACK_ALERT_LOG:-${HOME}/.openclaw/workspace-deep-research-master/.fallback_alert_log.json}"
 SESSION_BASE="${OPENCLAW_AGENT_SESSION_BASE:-${HOME}/.openclaw/agents}"
 WORKSPACE_ROOT="${OPENCLAW_WORKSPACE:-${HOME}/.openclaw/workspace-deep-research-master}"
+STATE_FILE="${OPENCLAW_FALLBACK_ALERT_LOG:-${WORKSPACE_ROOT}/.fallback_alert_log.json}"
 RUNS_ROOT="${WORKSPACE_ROOT}/deep-research/runs"
 MAX_ALERTS="${OPENCLAW_FALLBACK_ALERT_MAX:-12}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-now_epoch=$(date +%s)
 
 WATCH_AGENTS=(
   deep-research-master
@@ -48,19 +47,10 @@ fi
 active_task_ids=()
 if [[ -n "${OPENCLAW_FALLBACK_ALERT_TASK_ID:-}" ]]; then
   active_task_ids=("${(@s:,:)OPENCLAW_FALLBACK_ALERT_TASK_ID}")
-elif [[ -d "${RUNS_ROOT}" ]]; then
-  for status_file in "${RUNS_ROOT}"/*/stage_status.json; do
-    [[ -f "${status_file}" ]] || continue
-    run_status=$(jq -r '.status // ""' "${status_file}" 2>/dev/null || true)
-    if [[ "${run_status}" != "in_progress" ]]; then
-      last_updated=$(jq -r '.last_updated_at // ""' "${status_file}" 2>/dev/null || true)
-      updated_epoch=$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "${last_updated}" +%s 2>/dev/null || echo 0)
-      if [[ "${run_status}" != "completed" || "${updated_epoch}" == "0" || $((now_epoch - updated_epoch)) -gt 7200 ]]; then
-        continue
-      fi
-    fi
-    active_task_ids+=("$(basename "$(dirname "${status_file}")")")
-  done
+else
+  ACTIVE_RUN_STATE_SCRIPT="${SCRIPT_DIR}/deep-research-active-runs.sh"
+  active_run_state="$(OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" zsh "${ACTIVE_RUN_STATE_SCRIPT}")"
+  active_task_ids=("${(@f)$(jq -r '.active_task_ids[]' <<<"${active_run_state}")}")
 fi
 
 if (( ${#active_task_ids} == 0 )); then

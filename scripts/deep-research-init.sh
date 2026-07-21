@@ -76,7 +76,7 @@ safe_jq_update_file "${RUN_ROOT}/00_intake/handoff_to_clarification.json" \
   '.task_id = $task_id' \
   || exit 1
 if [[ -f "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" ]]; then
-  zsh "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" "${TASK_ID}" "INTAKE_RECEIVED" >/dev/null 2>&1 || true
+  zsh "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" "${TASK_ID}" "INTAKE_RECEIVED" >/dev/null
 fi
 
 echo "${RUN_ROOT}"

@@ -12,7 +12,7 @@ WORKSPACE_ROOT="${OPENCLAW_WORKSPACE:-${HOME}/.openclaw/workspace-deep-research-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 
 OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" zsh "${SCRIPT_DIR}/validate-final-output.sh" "${TASK_ID}" >/dev/null
-OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" OPENCLAW_ENABLE_STAGE_REPORTS="${OPENCLAW_ENABLE_STAGE_REPORTS:-true}" zsh "${SCRIPT_DIR}/emit-stage-report.sh" "${TASK_ID}" "DELIVERABLE_READY" >/dev/null 2>&1 || true
+OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" OPENCLAW_ENABLE_STAGE_REPORTS="${OPENCLAW_ENABLE_STAGE_REPORTS:-true}" zsh "${SCRIPT_DIR}/emit-stage-report.sh" "${TASK_ID}" "DELIVERABLE_READY" >/dev/null
 
 if [[ -f "${SCRIPT_DIR}/sync-to-obsidian.sh" ]]; then
   OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" zsh "${SCRIPT_DIR}/sync-to-obsidian.sh" "${TASK_ID}" >/dev/null 2>&1 || true

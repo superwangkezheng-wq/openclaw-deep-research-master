@@ -32,8 +32,8 @@ require_cmd() {
 }
 
 require_file() {
-  local path="$1"
-  [[ -s "${path}" ]] || fail "missing or empty file: ${path}"
+  local target_path="$1"
+  [[ -s "${target_path}" ]] || fail "missing or empty file: ${target_path}"
 }
 
 script_root="$(cd "$(dirname "$0")" && pwd -P)"

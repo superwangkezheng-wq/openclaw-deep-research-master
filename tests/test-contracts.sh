@@ -353,6 +353,13 @@ OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_PROGRESS_REPORT_LOG="${tmp_root}/log.j
 OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_PROGRESS_REPORT_LOG="${tmp_root}/log.json" OPENCLAW_FORCE_PROGRESS_REPORT=true OPENCLAW_PROGRESS_TASK_ID=t5done OPENCLAW_PROGRESS_REPORT_EVENT=RUN_COMPLETED "${SCRIPT_ROOT}/generate-progress-report.sh" > "${OUT}"
 grep -q "阶段事件：RUN_COMPLETED" "${OUT}" || fail "forced completion report reason missing"
 grep -q "任务已完成，不是卡住" "${OUT}" || fail "forced completion report body missing"
+ready_run="${tmp_root}/deep-research/runs/t5ready"
+mkdir -p "${ready_run}"
+cat > "${ready_run}/stage_status.json" <<'EOF'
+{"task_id":"t5ready","current_stage":"DELIVERABLE_READY","status":"in_progress","waiting_on":"none","last_updated_at":"2026-05-28T12:01:00+0800"}
+EOF
+OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_PROGRESS_REPORT_LOG="${tmp_root}/log.json" "${SCRIPT_ROOT}/generate-progress-report.sh" > "${OUT}"
+[[ ! -s "${OUT}" ]] || fail "deliverable-ready run unexpectedly emitted a periodic progress report"
 rm -rf "${tmp_root}"
 
 echo "9/33 progress cron follows active run lifecycle"
@@ -381,16 +388,203 @@ EOF
 cat > "${tmp_root}/deep-research/runs/t9done/stage_status.json" <<'EOF'
 {"task_id":"t9done","current_stage":"DELIVERABLE_READY","status":"completed","waiting_on":"none","stage_status":"accepted_complete"}
 EOF
-OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_CRON_JOBS_JSON="${tmp_root}/cron/jobs.json" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}"
+OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_CRON_BACKEND=json OPENCLAW_CRON_JOBS_JSON="${tmp_root}/cron/jobs.json" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}"
 jq -e '.should_enable_monitoring == false and .checks.progress_cron_state_ok == true and .checks.fallback_alert_cron_state_ok == true' "${OUT}" >/dev/null || fail "completed runs did not disable cron state"
 jq -e 'all(.jobs[]; .enabled == false)' "${tmp_root}/cron/jobs.json" >/dev/null || fail "completed runs left cron jobs enabled"
 mkdir -p "${tmp_root}/deep-research/runs/t9active"
 cat > "${tmp_root}/deep-research/runs/t9active/stage_status.json" <<'EOF'
 {"task_id":"t9active","current_stage":"WORKER_EXECUTING","status":"in_progress","waiting_on":"05_deep-research-worker","stage_status":"running"}
 EOF
-OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_CRON_JOBS_JSON="${tmp_root}/cron/jobs.json" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}"
+OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_CRON_BACKEND=json OPENCLAW_CRON_JOBS_JSON="${tmp_root}/cron/jobs.json" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}"
 jq -e '.should_enable_monitoring == true and (.active_task_ids | index("t9active")) and .checks.progress_cron_state_ok == true and .checks.fallback_alert_cron_state_ok == true' "${OUT}" >/dev/null || fail "active run did not enable cron state"
 jq -e 'all(.jobs[]; .enabled == true)' "${tmp_root}/cron/jobs.json" >/dev/null || fail "active run left cron jobs disabled"
+mkdir -p "${tmp_root}/deep-research/runs/t9waiting" "${tmp_root}/deep-research/runs/t9ready"
+cat > "${tmp_root}/deep-research/runs/t9waiting/stage_status.json" <<'EOF'
+{"task_id":"t9waiting","current_stage":"REFERENCE_SELECTION","status":"in_progress","waiting_on":"user","stage_status":"waiting_user"}
+EOF
+cat > "${tmp_root}/deep-research/runs/t9ready/stage_status.json" <<'EOF'
+{"task_id":"t9ready","current_stage":"DELIVERABLE_READY","status":"in_progress","waiting_on":"none","stage_status":"ready"}
+EOF
+OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/deep-research-active-runs.sh" > "${OUT}"
+jq -e '.active_task_ids == ["t9active"] and .active_run_count == 1' "${OUT}" >/dev/null || fail "active-run module did not enforce the lifecycle state matrix"
+for consumer in deep-research-cron-state.sh generate-progress-report.sh generate-fallback-alert.sh; do
+  rg -q 'deep-research-active-runs\.sh' "${SCRIPT_ROOT}/${consumer}" || fail "${consumer} does not use the canonical active-run module"
+done
+rm -rf "${tmp_root}"
+
+echo "9b/33 production cron adapter uses OpenClaw CLI and is idempotent"
+tmp_root="$(mktemp -d /tmp/dr-contract-cron-cli.XXXXXX)"
+mkdir -p "${tmp_root}/deep-research/runs/t9done" "${tmp_root}/profile"
+cat > "${tmp_root}/deep-research/runs/t9done/stage_status.json" <<'EOF'
+{"task_id":"t9done","current_stage":"DELIVERABLE_READY","status":"completed","waiting_on":"none","stage_status":"accepted_complete"}
+EOF
+cat > "${tmp_root}/cron-state.json" <<'EOF'
+{"jobs":[
+  {"id":"f93c3f98-4bd7-4442-b417-0d7e06c6f1f5","enabled":true,"schedule":{"everyMs":300000},"payload":{"model":"test/model","fallbacks":[],"toolsAllow":["exec"]},"delivery":{"channel":"feishu","accountId":"deep-research-master","to":"user:u1"}},
+  {"id":"68b6f7f1-c187-4153-a8d9-f5ab7842afc6","enabled":true,"schedule":{"everyMs":300000},"payload":{"model":"test/model","fallbacks":[],"toolsAllow":["exec"]},"delivery":{"channel":"feishu","accountId":"deep-research-master","to":"user:u1"}}
+]}
+EOF
+cat > "${tmp_root}/fake-openclaw" <<'EOF'
+#!/bin/zsh
+set -euo pipefail
+printf '%s\n' "$*" >> "${FAKE_OPENCLAW_INVOCATION_LOG}"
+[[ "${1:-}" == "cron" ]] || exit 64
+case "${2:-}" in
+  list)
+    [[ "${3:-}" == "--all" && "${4:-}" == "--json" ]] || exit 64
+    cat "${FAKE_OPENCLAW_CRON_STATE}"
+    ;;
+  enable|disable)
+    action="${2}"
+    id="${3:?missing cron id}"
+    fail_action_list="${FAKE_OPENCLAW_FAIL_ACTIONS:-}"
+    for forced_failure in "${(@s:,:)fail_action_list}"; do
+      if [[ -n "${forced_failure}" && "${action}:${id}" == "${forced_failure}" ]]; then
+        printf 'forced cron mutation failure for %s:%s\n' "${action}" "${id}" >&2
+        exit 70
+      fi
+    done
+    if [[ -n "${FAKE_OPENCLAW_FAIL_ID:-}" && "${id}" == "${FAKE_OPENCLAW_FAIL_ID}" ]]; then
+      printf 'forced cron mutation failure for %s\n' "${id}" >&2
+      exit 70
+    fi
+    if [[ -n "${FAKE_OPENCLAW_MUTATION_DELAY:-}" ]]; then
+      sleep "${FAKE_OPENCLAW_MUTATION_DELAY}"
+    fi
+    enabled=false
+    [[ "${action}" == "enable" ]] && enabled=true
+    tmp="$(mktemp "${FAKE_OPENCLAW_CRON_STATE}.tmp.XXXXXX")"
+    jq --arg id "${id}" --argjson enabled "${enabled}" '(.jobs[] | select(.id == $id) | .enabled) = $enabled' "${FAKE_OPENCLAW_CRON_STATE}" > "${tmp}"
+    mv "${tmp}" "${FAKE_OPENCLAW_CRON_STATE}"
+    printf '%s %s\n' "${action}" "${id}" >> "${FAKE_OPENCLAW_CRON_LOG}"
+    ;;
+  *) exit 64 ;;
+esac
+EOF
+chmod +x "${tmp_root}/fake-openclaw"
+cat > "${tmp_root}/fake-node" <<'EOF'
+#!/bin/zsh
+set -euo pipefail
+printf '%s\n' "$*" >> "${FAKE_OPENCLAW_NODE_LOG}"
+exec /bin/zsh "$@"
+EOF
+chmod +x "${tmp_root}/fake-node"
+[[ -f "${SCRIPT_ROOT}/openclaw-cron-cli.sh" ]] || fail "shared OpenClaw cron CLI runtime module missing"
+if rg -U -q 'command[[:space:]]+openclaw|[\"]?\$\{?OPENCLAW_BIN\}?[\"]?[[:space:]\\\n]+cron' \
+  "${SCRIPT_ROOT}/deep-research-cron-state.sh" \
+  "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh"; then
+  fail "cron lifecycle callers bypass the shared absolute Node runtime module"
+fi
+: > "${tmp_root}/cron-actions.log"
+: > "${tmp_root}/cron-invocations.log"
+: > "${tmp_root}/node-invocations.log"
+if env \
+  OPENCLAW_WORKSPACE="${tmp_root}" \
+  OPENCLAW_LIVE_WORKSPACE="${tmp_root}/not-the-live-workspace" \
+  OPENCLAW_PROFILE_ROOT="${tmp_root}/profile" \
+  OPENCLAW_NODE_BIN="${tmp_root}/fake-node" \
+  OPENCLAW_BIN="${tmp_root}/fake-openclaw" \
+  OPENCLAW_SYSTEM_BIN=/opt/homebrew/bin/openclaw \
+  OPENCLAW_DISABLE_RUNTIME_ENV=true \
+  FAKE_OPENCLAW_CRON_STATE="${tmp_root}/cron-state.json" \
+  FAKE_OPENCLAW_CRON_LOG="${tmp_root}/cron-actions.log" \
+  FAKE_OPENCLAW_INVOCATION_LOG="${tmp_root}/cron-invocations.log" \
+  FAKE_OPENCLAW_NODE_LOG="${tmp_root}/node-invocations.log" \
+  zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}" 2>&1; then
+  fail "non-live workspace reached the production cron adapter without explicit test authorization"
+fi
+[[ ! -s "${tmp_root}/cron-actions.log" ]] || fail "non-live cron guard ran a scheduler mutation before refusing"
+cron_cli_env=(
+  OPENCLAW_WORKSPACE="${tmp_root}"
+  OPENCLAW_LIVE_WORKSPACE="${tmp_root}/not-the-live-workspace"
+  OPENCLAW_PROFILE_ROOT="${tmp_root}/profile"
+  OPENCLAW_NODE_BIN="${tmp_root}/fake-node"
+  OPENCLAW_BIN="${tmp_root}/fake-openclaw"
+  OPENCLAW_SYSTEM_BIN=/opt/homebrew/bin/openclaw
+  OPENCLAW_DISABLE_RUNTIME_ENV=true
+  OPENCLAW_ALLOW_NONLIVE_CRON_CLI=true
+  OPENCLAW_PROGRESS_REPORT_LOG="${tmp_root}/progress-report-log.json"
+  OPENCLAW_FALLBACK_ALERT_LOG="${tmp_root}/fallback-alert-log.json"
+  OPENCLAW_MONITORING_LIFECYCLE_LOCK_DIR="${tmp_root}/lifecycle.lock"
+  OPENCLAW_MONITORING_LIFECYCLE_RECEIPT="${tmp_root}/lifecycle-receipt.json"
+  FAKE_OPENCLAW_CRON_STATE="${tmp_root}/cron-state.json"
+  FAKE_OPENCLAW_CRON_LOG="${tmp_root}/cron-actions.log"
+  FAKE_OPENCLAW_INVOCATION_LOG="${tmp_root}/cron-invocations.log"
+  FAKE_OPENCLAW_NODE_LOG="${tmp_root}/node-invocations.log"
+)
+env "${cron_cli_env[@]}" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}"
+jq -e '.cron_backend == "openclaw-cli" and .should_enable_monitoring == false and .checks.progress_cron_state_ok == true and .checks.fallback_alert_cron_state_ok == true' "${OUT}" >/dev/null || fail "CLI adapter did not disable completed-run cron state"
+[[ "$(wc -l < "${tmp_root}/cron-actions.log" | tr -d ' ')" == "2" ]] || fail "CLI adapter did not issue exactly two disable actions"
+jq -e '.status == "converged" and .desired_enabled == false and .after.progress_report == false and .after.fallback_alert == false and (.actions | length) == 2' "${tmp_root}/lifecycle-receipt.json" >/dev/null || fail "successful lifecycle reconcile did not persist a valid receipt"
+env "${cron_cli_env[@]}" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}"
+[[ "$(wc -l < "${tmp_root}/cron-actions.log" | tr -d ' ')" == "2" ]] || fail "CLI adapter was not idempotent"
+mkdir "${tmp_root}/lifecycle.lock"
+touch -t 202001010000 "${tmp_root}/lifecycle.lock"
+env "${cron_cli_env[@]}" OPENCLAW_MONITORING_LOCK_STALE_SECONDS=1 zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}"
+[[ ! -d "${tmp_root}/lifecycle.lock" ]] || fail "orphaned monitoring lock without an owner was not reclaimed"
+mkdir -p "${tmp_root}/deep-research/runs/t9active"
+cat > "${tmp_root}/deep-research/runs/t9active/stage_status.json" <<'EOF'
+{"task_id":"t9active","current_stage":"WORKER_EXECUTING","status":"in_progress","waiting_on":"05_deep-research-worker","stage_status":"running"}
+EOF
+env "${cron_cli_env[@]}" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}"
+jq -e '.cron_backend == "openclaw-cli" and .should_enable_monitoring == true and .checks.progress_cron_state_ok == true and .checks.fallback_alert_cron_state_ok == true' "${OUT}" >/dev/null || fail "CLI adapter did not enable active-run cron state"
+[[ "$(wc -l < "${tmp_root}/cron-actions.log" | tr -d ' ')" == "4" ]] || fail "CLI adapter did not issue exactly two enable actions"
+rm -rf "${tmp_root}/deep-research/runs/t9active"
+if env "${cron_cli_env[@]}" FAKE_OPENCLAW_FAIL_ID="68b6f7f1-c187-4153-a8d9-f5ab7842afc6" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}" 2>&1; then
+  fail "CLI adapter accepted a partial two-job lifecycle mutation"
+fi
+jq -e 'all(.jobs[]; .enabled == true)' "${tmp_root}/cron-state.json" >/dev/null || fail "CLI adapter did not compensate the first job after the second mutation failed"
+if env "${cron_cli_env[@]}" \
+  FAKE_OPENCLAW_FAIL_ACTIONS="disable:68b6f7f1-c187-4153-a8d9-f5ab7842afc6,enable:f93c3f98-4bd7-4442-b417-0d7e06c6f1f5" \
+  zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}" 2>&1; then
+  fail "CLI adapter accepted a lifecycle mutation whose compensation failed"
+fi
+jq -e '.status == "compensation_failed" and .compensation.ok == false and .after.progress_report == false and .after.fallback_alert == true' "${tmp_root}/lifecycle-receipt.json" >/dev/null || fail "compensation failure did not persist split-brain evidence"
+jq '(.jobs[].enabled) = true' "${tmp_root}/cron-state.json" > "${tmp_root}/cron-state.reset.json"
+mv "${tmp_root}/cron-state.reset.json" "${tmp_root}/cron-state.json"
+mkdir -p "${tmp_root}/deep-research/runs/t9malformed"
+printf '{' > "${tmp_root}/deep-research/runs/t9malformed/stage_status.json"
+actions_before_malformed="$(wc -l < "${tmp_root}/cron-actions.log" | tr -d ' ')"
+if env "${cron_cli_env[@]}" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}" 2>&1; then
+  fail "CLI adapter treated malformed run truth as an inactive system"
+fi
+[[ "$(wc -l < "${tmp_root}/cron-actions.log" | tr -d ' ')" == "${actions_before_malformed}" ]] || fail "malformed run truth caused a scheduler mutation"
+jq -e 'all(.jobs[]; .enabled == true)' "${tmp_root}/cron-state.json" >/dev/null || fail "malformed run truth changed scheduler state"
+rm -rf "${tmp_root}/deep-research/runs/t9malformed"
+env "${cron_cli_env[@]}" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}"
+jq -e 'all(.jobs[]; .enabled == false)' "${tmp_root}/cron-state.json" >/dev/null || fail "CLI adapter did not converge after compensated failure"
+repo_root_for_heartbeat="$(cd "${SCRIPT_ROOT}/.." && pwd -P)"
+jq '(.jobs[].enabled) = true' "${tmp_root}/cron-state.json" > "${tmp_root}/cron-state.enabled.json"
+mv "${tmp_root}/cron-state.enabled.json" "${tmp_root}/cron-state.json"
+env "${cron_cli_env[@]}" OPENCLAW_WORKSPACE="${repo_root_for_heartbeat}" zsh "${SCRIPT_ROOT}/run-progress-report-heartbeat.sh" > "${OUT}"
+jq -e 'all(.jobs[]; .enabled == false)' "${tmp_root}/cron-state.json" >/dev/null || fail "progress heartbeat did not self-disable monitoring after completed runs"
+jq -e '.reason == "heartbeat_progress" and .status == "converged"' "${tmp_root}/lifecycle-receipt.json" >/dev/null || fail "progress heartbeat receipt did not identify its reconcile reason"
+jq '(.jobs[].enabled) = true' "${tmp_root}/cron-state.json" > "${tmp_root}/cron-state.enabled.json"
+mv "${tmp_root}/cron-state.enabled.json" "${tmp_root}/cron-state.json"
+env "${cron_cli_env[@]}" OPENCLAW_WORKSPACE="${repo_root_for_heartbeat}" zsh "${SCRIPT_ROOT}/run-fallback-alert-heartbeat.sh" > "${OUT}"
+jq -e 'all(.jobs[]; .enabled == false)' "${tmp_root}/cron-state.json" >/dev/null || fail "fallback heartbeat did not self-disable monitoring after completed runs"
+jq -e '.reason == "heartbeat_fallback" and .status == "converged"' "${tmp_root}/lifecycle-receipt.json" >/dev/null || fail "fallback heartbeat receipt did not identify its reconcile reason"
+printf '' > "${tmp_root}/cron-actions.log"
+jq '(.jobs[].enabled) = true' "${tmp_root}/cron-state.json" > "${tmp_root}/cron-state.enabled.json"
+mv "${tmp_root}/cron-state.enabled.json" "${tmp_root}/cron-state.json"
+cron_pids=()
+for concurrent_index in 1 2; do
+  env "${cron_cli_env[@]}" FAKE_OPENCLAW_MUTATION_DELAY=0.2 zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${tmp_root}/concurrent-${concurrent_index}.json" &
+  cron_pids+=($!)
+done
+for cron_pid in "${cron_pids[@]}"; do
+  wait "${cron_pid}" || fail "concurrent lifecycle reconcile failed"
+done
+[[ "$(wc -l < "${tmp_root}/cron-actions.log" | tr -d ' ')" == "2" ]] || fail "concurrent lifecycle reconciles were not serialized"
+jq -e 'all(.jobs[]; .enabled == false)' "${tmp_root}/cron-state.json" >/dev/null || fail "concurrent lifecycle reconcile did not converge"
+actions_before_missing="$(wc -l < "${tmp_root}/cron-actions.log" | tr -d ' ')"
+jq 'del(.jobs[] | select(.id == "68b6f7f1-c187-4153-a8d9-f5ab7842afc6"))' "${tmp_root}/cron-state.json" > "${tmp_root}/cron-state.missing.json"
+mv "${tmp_root}/cron-state.missing.json" "${tmp_root}/cron-state.json"
+if env "${cron_cli_env[@]}" zsh "${SCRIPT_ROOT}/sync-deep-research-cron-state.sh" > "${OUT}" 2>&1; then
+  fail "CLI adapter accepted a missing managed cron job"
+fi
+[[ "$(wc -l < "${tmp_root}/cron-actions.log" | tr -d ' ')" == "${actions_before_missing}" ]] || fail "CLI adapter partially mutated state before missing-job rejection"
+assert_eq "$(wc -l < "${tmp_root}/node-invocations.log" | tr -d ' ')" "$(wc -l < "${tmp_root}/cron-invocations.log" | tr -d ' ')" "all OpenClaw CLI calls pass through the Node runtime adapter"
 rm -rf "${tmp_root}"
 
 echo "10/33 stage event bus records stage events even when reports are disabled"
@@ -401,6 +595,38 @@ echo '{"task_id":"t6","current_stage":"READY_FOR_WORKERS","status":"in_progress"
 OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_DISABLE_STAGE_REPORTS=true zsh "${SCRIPT_ROOT}/emit-stage-report.sh" t6 READY_FOR_WORKERS
 [[ -s "${run}/stage_events.jsonl" ]] || fail "stage events file missing"
 tail -n 1 "${run}/stage_events.jsonl" | jq -e '.event_type == "stage_report_event" and .event_detail == "READY_FOR_WORKERS"' >/dev/null || fail "stage event content invalid"
+printf '{"jobs":[' > "${tmp_root}/invalid-cron.json"
+if OPENCLAW_WORKSPACE="${tmp_root}" OPENCLAW_CRON_BACKEND=json OPENCLAW_CRON_JOBS_JSON="${tmp_root}/invalid-cron.json" OPENCLAW_DISABLE_STAGE_REPORTS=true zsh "${SCRIPT_ROOT}/emit-stage-report.sh" t6 MONITORING_FAILURE > "${OUT}" 2> "${ERR}"; then
+  fail "stage event path swallowed monitoring lifecycle failure"
+fi
+[[ -s "${ERR}" ]] || fail "stage event path discarded monitoring lifecycle diagnostics"
+if rg -q 'emit-stage-report\.sh.*\|\| true' "${SCRIPT_ROOT}"/*.sh; then
+  fail "stage transition caller still suppresses monitoring lifecycle failure"
+fi
+if rg -q 'emit-stage-report\.sh.*2>&1' "${SCRIPT_ROOT}"/*.sh; then
+  fail "stage transition caller still discards monitoring lifecycle diagnostics"
+fi
+repo_root_for_heartbeat="$(cd "${SCRIPT_ROOT}/.." && pwd -P)"
+heartbeat_failure_env=(
+  OPENCLAW_WORKSPACE="${repo_root_for_heartbeat}"
+  OPENCLAW_CRON_BACKEND=json
+  OPENCLAW_CRON_JOBS_JSON="${tmp_root}/invalid-cron.json"
+  OPENCLAW_MONITORING_LIFECYCLE_LOCK_DIR="${tmp_root}/failure.lock"
+  OPENCLAW_MONITORING_LIFECYCLE_RECEIPT="${tmp_root}/failure-receipt.json"
+  OPENCLAW_PROGRESS_REPORT_LOG="${tmp_root}/failure-progress-log.json"
+  OPENCLAW_FALLBACK_ALERT_LOG="${tmp_root}/failure-fallback-log.json"
+  OPENCLAW_AGENT_SESSION_BASE="${tmp_root}/agents"
+)
+if env "${heartbeat_failure_env[@]}" zsh "${SCRIPT_ROOT}/run-progress-report-heartbeat.sh" > "${OUT}" 2> "${ERR}"; then
+  fail "progress heartbeat swallowed monitoring lifecycle failure"
+fi
+grep -q '^HEARTBEAT_OK$' "${OUT}" || fail "progress heartbeat skipped report generation after monitoring sync failure"
+[[ -s "${ERR}" ]] || fail "progress heartbeat discarded monitoring lifecycle diagnostics"
+if env "${heartbeat_failure_env[@]}" zsh "${SCRIPT_ROOT}/run-fallback-alert-heartbeat.sh" > "${OUT}" 2> "${ERR}"; then
+  fail "fallback heartbeat swallowed monitoring lifecycle failure"
+fi
+grep -q '^HEARTBEAT_OK$' "${OUT}" || fail "fallback heartbeat skipped alert generation after monitoring sync failure"
+[[ -s "${ERR}" ]] || fail "fallback heartbeat discarded monitoring lifecycle diagnostics"
 rm -rf "${tmp_root}"
 
 echo "11/33 director validation generates router plan and research run preview"
@@ -599,10 +825,39 @@ echo "stage report" > "${tmp_root}/.stage_report_outbox/t11-20260528120000-DELIV
 OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true OPENCLAW_WORKSPACE="${tmp_root}" OBSIDIAN_VAULT="${obsidian_vault}" zsh "${SCRIPT_ROOT}/deep-research-acceptance.sh" t11 > "${OUT}"
 jq -e '.status == "pass_with_warnings" and .summary.fail == 0 and ([.checks[] | select(.name == "obsidian_sync" and .status == "pass")] | length == 1)' "${OUT}" >/dev/null || fail "acceptance gate did not pass with expected warning-only status"
 
-echo "15/33 close accepted run marks completed only after acceptance passes"
-OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true OPENCLAW_DISABLE_STAGE_REPORTS=true OPENCLAW_WORKSPACE="${tmp_root}" OBSIDIAN_VAULT="${obsidian_vault}" zsh "${SCRIPT_ROOT}/close-accepted-run.sh" t11 > "${OUT}"
+echo "15/33 close accepted run marks completed only after acceptance passes and retries idempotently"
+printf '{"jobs":[' > "${tmp_root}/invalid-close-cron.json"
+close_monitoring_env=(
+  OPENCLAW_CRON_BACKEND=json
+  OPENCLAW_CRON_JOBS_JSON="${tmp_root}/invalid-close-cron.json"
+  OPENCLAW_MONITORING_LIFECYCLE_LOCK_DIR="${tmp_root}/close-failure.lock"
+  OPENCLAW_MONITORING_LIFECYCLE_RECEIPT="${tmp_root}/close-failure-receipt.json"
+)
+if env "${close_monitoring_env[@]}" \
+  OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true \
+  OPENCLAW_DISABLE_STAGE_REPORTS=true \
+  OPENCLAW_WORKSPACE="${tmp_root}" \
+  OBSIDIAN_VAULT="${obsidian_vault}" \
+  zsh "${SCRIPT_ROOT}/close-accepted-run.sh" t11 > "${OUT}" 2> "${ERR}"; then
+  fail "close accepted monitoring failure unexpectedly succeeded"
+fi
+jq -e '.status == "completed" and .stage_status == "accepted_complete"' "${run}/stage_status.json" >/dev/null || fail "business completion was rolled back after monitoring failure"
+sentinel_completed_at="2026-05-28T23:59:59+0800"
+jq --arg completed_at "${sentinel_completed_at}" '.completed_at = $completed_at' "${run}/stage_status.json" > "${run}/stage_status.retry.json"
+mv "${run}/stage_status.retry.json" "${run}/stage_status.json"
+run_completed_before="$(jq -s '[.[] | select(.event_type == "run_completed")] | length' "${run}/stage_events.jsonl")"
+cat > "${tmp_root}/invalid-close-cron.json" <<'EOF'
+{"jobs":[
+  {"id":"f93c3f98-4bd7-4442-b417-0d7e06c6f1f5","enabled":false},
+  {"id":"68b6f7f1-c187-4153-a8d9-f5ab7842afc6","enabled":false}
+]}
+EOF
+env "${close_monitoring_env[@]}" OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true OPENCLAW_DISABLE_STAGE_REPORTS=true OPENCLAW_WORKSPACE="${tmp_root}" OBSIDIAN_VAULT="${obsidian_vault}" zsh "${SCRIPT_ROOT}/close-accepted-run.sh" t11 > "${OUT}"
 jq -e '.status == "completed" and .acceptance_status == "pass_with_warnings"' "${OUT}" >/dev/null || fail "close accepted run output invalid"
+jq -e --arg completed_at "${sentinel_completed_at}" '.completed_at == $completed_at' "${OUT}" >/dev/null || fail "close retry replaced the original completion timestamp"
 jq -e '.status == "completed" and .waiting_on == "none" and .stage_status == "accepted_complete" and .acceptance.status == "pass_with_warnings"' "${run}/stage_status.json" >/dev/null || fail "accepted run was not marked completed"
+run_completed_after="$(jq -s '[.[] | select(.event_type == "run_completed")] | length' "${run}/stage_events.jsonl")"
+assert_eq "${run_completed_after}" "${run_completed_before}" "close retry run_completed event count"
 tail -n 1 "${run}/stage_events.jsonl" | jq -e '.event_type == "stage_report_event" or .event_type == "run_completed"' >/dev/null || fail "close accepted run event missing"
 rm -rf "${tmp_root}"
 
@@ -635,6 +890,20 @@ if rg -q 'RAGFLOW_AUTH_HEADER="Authorization: Bearer|headers\\[\\"Authorization\
   fail "RAGFlow container fallback passes full Authorization header instead of token"
 fi
 rg -q 'RAGFLOW_AUTH_TOKEN' "${repo_root}/scripts/ragflow-local-query.sh" "${repo_root}/scripts/ragflow-list-documents.sh" || fail "RAGFlow container fallback token contract missing"
+ragflow_reserved_paths=(
+  "${repo_root}/scripts/ragflow-local-query.sh"
+  "${repo_root}/ragflow_local_kb/sync_folder_to_ragflow.sh"
+)
+for inspected_path in "${ragflow_reserved_paths[@]}"; do
+  [[ -r "${inspected_path}" ]] || fail "RAGFlow reserved-name contract cannot read ${inspected_path}"
+done
+ragflow_reserved_rc=0
+rg -q '\$\{path\}' "${ragflow_reserved_paths[@]}" || ragflow_reserved_rc=$?
+case "${ragflow_reserved_rc}" in
+  0) fail "RAGFlow zsh wrappers still reference the reserved path parameter" ;;
+  1) ;;
+  *) fail "RAGFlow reserved-name contract inspection failed with status ${ragflow_reserved_rc}" ;;
+esac
 
 echo "17/33 Obsidian sync reports copy failures"
 tmp_root="$(mktemp -d /tmp/dr-contract-obsidian-sync.XXXXXX)"

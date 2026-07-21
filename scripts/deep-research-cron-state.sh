@@ -1,11 +1,10 @@
 #!/bin/zsh
 
 set -euo pipefail
-setopt null_glob
-
 WORKSPACE_ROOT="${OPENCLAW_WORKSPACE:-${HOME}/.openclaw/workspace-deep-research-master}"
 PROFILE_ROOT="${OPENCLAW_PROFILE_ROOT:-${HOME}/.openclaw}"
 CRON_JOBS_JSON="${OPENCLAW_CRON_JOBS_JSON:-${PROFILE_ROOT}/cron/jobs.json}"
+CRON_BACKEND="${OPENCLAW_CRON_BACKEND:-openclaw-cli}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 if [[ -f "${SCRIPT_DIR}/runtime-env.sh" ]]; then
   source "${SCRIPT_DIR}/runtime-env.sh"
@@ -13,8 +12,10 @@ if [[ -f "${SCRIPT_DIR}/runtime-env.sh" ]]; then
   WORKSPACE_ROOT="${OPENCLAW_WORKSPACE:-${WORKSPACE_ROOT}}"
   PROFILE_ROOT="${OPENCLAW_PROFILE_ROOT:-${PROFILE_ROOT}}"
   CRON_JOBS_JSON="${OPENCLAW_CRON_JOBS_JSON:-${PROFILE_ROOT}/cron/jobs.json}"
+  CRON_BACKEND="${OPENCLAW_CRON_BACKEND:-${CRON_BACKEND}}"
 fi
-if [[ -z "${OPENCLAW_CRON_JOBS_JSON:-}" || ! -f "${CRON_JOBS_JSON}" ]]; then
+source "${SCRIPT_DIR}/openclaw-cron-cli.sh"
+if [[ "${CRON_BACKEND}" == "json" && ! -f "${CRON_JOBS_JSON}" ]]; then
   CRON_JOBS_JSON="$(python3 - "${PROFILE_ROOT}" <<'PY' 2>/dev/null || printf '%s/cron/jobs.json' "${PROFILE_ROOT}"
 from __future__ import annotations
 
@@ -29,32 +30,16 @@ PY
 )"
 fi
 
-RUNS_ROOT="${WORKSPACE_ROOT}/deep-research/runs"
 PROGRESS_CRON_ID="f93c3f98-4bd7-4442-b417-0d7e06c6f1f5"
 FALLBACK_ALERT_CRON_ID="68b6f7f1-c187-4153-a8d9-f5ab7842afc6"
-active_task_ids=()
-
-for status_file in "${RUNS_ROOT}"/*/stage_status.json; do
-  [[ -f "${status_file}" ]] || continue
-  run_status="$(jq -r '.status // ""' "${status_file}" 2>/dev/null || echo "")"
-  waiting_on="$(jq -r '.waiting_on // ""' "${status_file}" 2>/dev/null || echo "")"
-  current_stage="$(jq -r '.current_stage // ""' "${status_file}" 2>/dev/null || echo "")"
-  task_id="$(basename "$(dirname "${status_file}")")"
-
-  if [[ "${run_status}" == "in_progress" && "${waiting_on}" != "user" && "${current_stage}" != "DELIVERABLE_READY" ]]; then
-    active_task_ids+=("${task_id}")
-  fi
-done
-
-if (( ${#active_task_ids} > 0 )); then
-  active_json="$(printf '%s\n' "${active_task_ids[@]}" | jq -R . | jq -s .)"
-else
-  active_json='[]'
+ACTIVE_RUN_STATE_SCRIPT="${SCRIPT_DIR}/deep-research-active-runs.sh"
+if [[ ! -x "${ACTIVE_RUN_STATE_SCRIPT}" && ! -f "${ACTIVE_RUN_STATE_SCRIPT}" ]]; then
+  echo "Missing active-run state module: ${ACTIVE_RUN_STATE_SCRIPT}" >&2
+  exit 1
 fi
-should_enable="false"
-if (( ${#active_task_ids} > 0 )); then
-  should_enable="true"
-fi
+active_run_state="$(OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" zsh "${ACTIVE_RUN_STATE_SCRIPT}")"
+active_json="$(jq -c '.active_task_ids' <<<"${active_run_state}")"
+should_enable="$(jq -r '.should_enable_monitoring' <<<"${active_run_state}")"
 expected_model_chain="$(python3 - <<'PY' 2>/dev/null || printf '{}'
 from __future__ import annotations
 
@@ -74,9 +59,21 @@ print(json.dumps({
 PY
 )"
 
-cron_contract='{}'
-if [[ -f "${CRON_JOBS_JSON}" ]]; then
-  cron_contract="$(jq -c \
+cron_backend="${CRON_BACKEND}"
+cron_source='{}'
+if [[ "${cron_backend}" == "openclaw-cli" ]]; then
+  if ! cron_source="$(openclaw_cron_cli cron list --all --json)"; then
+    echo "Failed to read live cron state through OpenClaw CLI" >&2
+    exit 1
+  fi
+elif [[ "${cron_backend}" == "json" && -f "${CRON_JOBS_JSON}" ]]; then
+  cron_source="$(<"${CRON_JOBS_JSON}")"
+else
+  echo "Unsupported cron backend: ${cron_backend}" >&2
+  exit 1
+fi
+
+cron_contract="$(printf '%s\n' "${cron_source}" | jq -c \
     --arg progress_id "${PROGRESS_CRON_ID}" \
     --arg fallback_id "${FALLBACK_ALERT_CRON_ID}" \
   '
@@ -98,11 +95,11 @@ if [[ -f "${CRON_JOBS_JSON}" ]]; then
       progress_report: cron_job($progress_id),
       fallback_alert: cron_job($fallback_id)
     }
-  ' "${CRON_JOBS_JSON}")"
-fi
+  ')"
 
 jq -n \
   --arg workspace_root "${WORKSPACE_ROOT}" \
+  --arg cron_backend "${cron_backend}" \
   --arg cron_jobs_json "${CRON_JOBS_JSON}" \
   --arg progress_cron_id "${PROGRESS_CRON_ID}" \
   --arg fallback_alert_cron_id "${FALLBACK_ALERT_CRON_ID}" \
@@ -119,6 +116,7 @@ jq -n \
      and ($job.delivery.accountId == "deep-research-master");
    {
      workspace_root: $workspace_root,
+     cron_backend: $cron_backend,
      cron_jobs_json: $cron_jobs_json,
      progress_cron_id: $progress_cron_id,
      fallback_alert_cron_id: $fallback_alert_cron_id,

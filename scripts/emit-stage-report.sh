@@ -18,31 +18,35 @@ if [[ -f "${SCRIPT_DIR}/runtime-env.sh" ]]; then
 fi
 LIVE_WORKSPACE="${OPENCLAW_LIVE_WORKSPACE:-${HOME}/.openclaw/workspace-deep-research-master}"
 CRON_JOBS_JSON="${OPENCLAW_CRON_JOBS_JSON:-${HOME}/.openclaw/cron/jobs.json}"
+monitoring_sync_rc=0
 
 if [[ -f "${SCRIPT_DIR}/record-stage-event.sh" ]]; then
   zsh "${SCRIPT_DIR}/record-stage-event.sh" "${TASK_ID}" "stage_report_event" "${EVENT_LABEL}" >/dev/null 2>&1 || true
 fi
 
 if [[ -x "${SCRIPT_DIR}/sync-deep-research-cron-state.sh" && ( "${WORKSPACE_ROOT}" == "${LIVE_WORKSPACE}" || -n "${OPENCLAW_CRON_JOBS_JSON:-}" ) ]]; then
-  OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" OPENCLAW_CRON_JOBS_JSON="${CRON_JOBS_JSON}" zsh "${SCRIPT_DIR}/sync-deep-research-cron-state.sh" >/dev/null 2>&1 || true
+  OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" \
+    OPENCLAW_CRON_JOBS_JSON="${CRON_JOBS_JSON}" \
+    OPENCLAW_MONITORING_REASON="stage_event:${EVENT_LABEL}" \
+    zsh "${SCRIPT_DIR}/sync-deep-research-cron-state.sh" >/dev/null || monitoring_sync_rc=$?
 fi
 
 if [[ "${OPENCLAW_DISABLE_STAGE_REPORTS:-false}" == "true" ]]; then
-  exit 0
+  exit "${monitoring_sync_rc}"
 fi
 
 if [[ "${OPENCLAW_ENABLE_STAGE_REPORTS:-false}" != "true" && "${WORKSPACE_ROOT}" != "${LIVE_WORKSPACE}" ]]; then
-  exit 0
+  exit "${monitoring_sync_rc}"
 fi
 
 REPORT_SCRIPT="${SCRIPT_DIR}/generate-progress-report.sh"
 if [[ ! -x "${REPORT_SCRIPT}" ]]; then
-  exit 0
+  exit "${monitoring_sync_rc}"
 fi
 
 report="$(OPENCLAW_FORCE_PROGRESS_REPORT=true OPENCLAW_PROGRESS_TASK_ID="${TASK_ID}" OPENCLAW_PROGRESS_REPORT_EVENT="${EVENT_LABEL}" "${REPORT_SCRIPT}" 2>/dev/null || true)"
 if [[ -z "${report}" ]]; then
-  exit 0
+  exit "${monitoring_sync_rc}"
 fi
 
 outbox="${WORKSPACE_ROOT}/.stage_report_outbox"
@@ -51,7 +55,7 @@ printf '%s\n' "${report}" > "${outbox}/${TASK_ID}-$(date +%Y%m%d%H%M%S)-${EVENT_
 
 LARK_WRAPPER="${OPENCLAW_LARK_WRAPPER:-${HOME}/.openclaw/workspace/scripts/lark-cli-openclaw.sh}"
 if [[ ! -f "${LARK_WRAPPER}" ]]; then
-  exit 0
+  exit "${monitoring_sync_rc}"
 fi
 
 target_user="${OPENCLAW_STAGE_REPORT_FEISHU_USER_ID:-}"
@@ -61,7 +65,7 @@ if [[ -z "${target_user}" && -f "${CRON_JOBS_JSON}" ]]; then
 fi
 
 if [[ -z "${target_user}" ]]; then
-  exit 0
+  exit "${monitoring_sync_rc}"
 fi
 
 safe_event_label="${EVENT_LABEL//[^A-Za-z0-9_=-]/_}"
@@ -72,3 +76,5 @@ OPENCLAW_FEISHU_ACCOUNT_ID="${OPENCLAW_FEISHU_ACCOUNT_ID:-deep-research-master}"
     --user-id "${target_user}" \
     --idempotency-key "${idempotency_key}" \
     --text "${report}" >/dev/null 2>&1 || true
+
+exit "${monitoring_sync_rc}"

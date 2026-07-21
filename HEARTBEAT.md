@@ -30,6 +30,14 @@ ${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace-deep-research-master}/scripts/sy
 
 This enables the cron jobs only when at least one run is active: `status = in_progress`, `waiting_on != user`, and `current_stage != DELIVERABLE_READY`. When every run is completed, archived, delivered, or waiting on the user, both routine cron jobs must be disabled.
 
+Production scheduling truth comes from the OpenClaw CLI/SQLite backend. The state reader uses `openclaw cron list --all --json`, and the synchronizer uses `openclaw cron enable|disable <id>`. A JSON jobs file is a test adapter only and requires the explicit pair `OPENCLAW_CRON_BACKEND=json` plus `OPENCLAW_CRON_JOBS_JSON=<fixture>`. Legacy `jobs.json.migrated` metadata must not be treated as live enabled state.
+
+`scripts/deep-research-active-runs.sh` is the single active-run policy module used by cron lifecycle, progress reports, and fallback alerts. Invalid, malformed, mismatched, or unknown `stage_status.json` data is indeterminate and must fail before any scheduler mutation; it must never be interpreted as zero active runs.
+
+The synchronizer treats the two routine cron jobs as one lifecycle pair. It acquires a bounded lock, reads run and cron truth after locking, preflights both jobs, applies only the delta, verifies both postconditions, and compensates prior changes when a later mutation fails. Every attempt writes an atomic receipt to `.monitoring_lifecycle/last-reconcile.json`, including reason, desired state, before/actions/compensation/after, and error. A `compensation_failed` receipt is split-brain evidence and requires another reconcile or operator attention.
+
+Production CLI mutation is allowed only from the live workspace projection. Non-live contract tests must explicitly select the JSON adapter or an explicitly authorized non-system fake CLI. Both heartbeat wrappers reconcile before generating their output. If reconcile fails, they still generate the current progress/fallback result, preserve diagnostics, and finally return nonzero so the scheduler can retry.
+
 If the output is exactly `HEARTBEAT_OK`, do not send any chat message.
 If the output is a markdown progress report, send it to the bound Feishu direct session for the deep research master account.
 

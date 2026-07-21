@@ -82,7 +82,7 @@ if [[ "${final_status}" == "needs_rewrite" ]]; then
      | .last_updated_at = $now' \
     || exit 1
   if [[ -f "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" ]]; then
-    zsh "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" "${TASK_ID}" "READY_FOR_DELIVERY" >/dev/null 2>&1 || true
+    zsh "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" "${TASK_ID}" "READY_FOR_DELIVERY" >/dev/null
   fi
 
   echo "${final_status}"
@@ -192,7 +192,7 @@ safe_jq_update_file "${STAGE_STATUS_JSON}" \
    | .last_updated_at = $now' \
   || exit 1
 if [[ -f "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" ]]; then
-  zsh "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" "${TASK_ID}" "DELIVERABLE_READY" >/dev/null 2>&1 || true
+  zsh "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" "${TASK_ID}" "DELIVERABLE_READY" >/dev/null
 fi
 
 echo "${final_status}"

@@ -98,7 +98,7 @@ anysearch_fallback_reason="$(jq -r '.anysearch_fallback_reason // .search_backen
 fallback_notify_required="$(jq -r '.search_route.fallback_notify_required // false' "${TASK_PACK_JSON}")"
 if [[ -n "${anysearch_fallback_reason}" && "${fallback_notify_required}" == "true" ]]; then
   if [[ -f "${SCRIPT_DIR}/emit-stage-report.sh" ]]; then
-    zsh "${SCRIPT_DIR}/emit-stage-report.sh" "${TASK_ID}" "SEARCH_BACKEND_FALLBACK:${WORKER_ID}:anysearch" >/dev/null 2>&1 || true
+    zsh "${SCRIPT_DIR}/emit-stage-report.sh" "${TASK_ID}" "SEARCH_BACKEND_FALLBACK:${WORKER_ID}:anysearch" >/dev/null
   fi
 fi
 
@@ -299,7 +299,7 @@ safe_jq_update_file "${STAGE_STATUS_JSON}" \
    | .last_updated_at = $now' \
   || exit 1
 if [[ -f "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" ]]; then
-  zsh "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" "${TASK_ID}" "${next_stage}:${WORKER_ID}" >/dev/null 2>&1 || true
+  zsh "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" "${TASK_ID}" "${next_stage}:${WORKER_ID}" >/dev/null
 fi
 
 echo "${worker_status}"

@@ -35,30 +35,20 @@ if [[ -n "${FORCE_TASK_ID}" ]]; then
   best_run="${forced_status_file}"
   best_updated=$(date +%s)
 else
-for status_file in "${RUNS_ROOT}"/*/stage_status.json; do
-  [[ -f "${status_file}" ]] || continue
-
-  candidate_task_id=$(basename "$(dirname "${status_file}")")
-  run_status=$(jq -r '.status // ""' "${status_file}")
-  waiting_on=$(jq -r '.waiting_on // ""' "${status_file}")
-  last_updated=$(jq -r '.last_updated_at // ""' "${status_file}")
+ACTIVE_RUN_STATE_SCRIPT="${SCRIPT_DIR}/deep-research-active-runs.sh"
+active_run_state="$(OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" zsh "${ACTIVE_RUN_STATE_SCRIPT}")"
+while IFS=$'\t' read -r candidate_task_id status_file last_updated; do
+  [[ -n "${candidate_task_id}" && -n "${status_file}" ]] || continue
   updated_epoch=$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "${last_updated}" +%s 2>/dev/null || echo 0)
 
-  candidate_priority=0
-  if [[ "${run_status}" == "in_progress" && "${waiting_on}" != "user" ]]; then
-    candidate_priority=2
-  fi
-
-  if (( candidate_priority == 0 )); then
-    continue
-  fi
+  candidate_priority=2
 
   if (( candidate_priority > best_priority || (candidate_priority == best_priority && updated_epoch > best_updated) )); then
     best_priority="${candidate_priority}"
     best_updated="${updated_epoch}"
     best_run="${status_file}"
   fi
-done
+done < <(jq -r '.active_runs[] | [.task_id, .status_file, .last_updated_at] | @tsv' <<<"${active_run_state}")
 fi
 
 if [[ -z "${best_run}" ]]; then

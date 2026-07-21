@@ -125,7 +125,7 @@ safe_jq_update_file "${STAGE_STATUS_JSON}" \
    | .last_updated_at = $now' \
   || exit 1
 if [[ -f "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" ]]; then
-  zsh "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" "${TASK_ID}" "CLARIFYING" >/dev/null 2>&1 || true
+  zsh "${WORKSPACE_ROOT}/scripts/emit-stage-report.sh" "${TASK_ID}" "CLARIFYING" >/dev/null
 fi
 
 echo "${PROMPT_MD}"
