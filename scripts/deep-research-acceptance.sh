@@ -237,6 +237,7 @@ fi
 fail_count="$(jq -r '[.[] | select(.status == "fail")] | length' "${CHECKS_JSON}")"
 warn_count="$(jq -r '[.[] | select(.status == "warn")] | length' "${CHECKS_JSON}")"
 pass_count="$(jq -r '[.[] | select(.status == "pass")] | length' "${CHECKS_JSON}")"
+CHECKED_AT="${DEEP_RESEARCH_ACCEPTANCE_NOW:-$(date '+%Y-%m-%dT%H:%M:%S%z')}"
 
 if (( fail_count > 0 )); then
   acceptance_status="fail"
@@ -246,11 +247,11 @@ else
   acceptance_status="pass"
 fi
 
-jq -n \
+acceptance_json="$(jq -n \
   --arg task_id "${TASK_ID}" \
   --arg run_root "${RUN_ROOT}" \
   --arg obsidian_root "${OBSIDIAN_ROOT}" \
-  --arg checked_at "$(date '+%Y-%m-%dT%H:%M:%S%z')" \
+  --arg checked_at "${CHECKED_AT}" \
   --arg status "${acceptance_status}" \
   --argjson checks "$(cat "${CHECKS_JSON}")" \
   --argjson pass_count "${pass_count}" \
@@ -268,8 +269,31 @@ jq -n \
       fail: $fail_count
     },
     checks: $checks
-  }'
+  }')"
 
-if (( fail_count > 0 )); then
+receipt_write_failed=false
+if [[ -d "${RUN_ROOT}" ]]; then
+  ACCEPTANCE_RECEIPT_SCRIPT="${DEEP_RESEARCH_ACCEPTANCE_RECEIPT_SCRIPT:-${SCRIPT_DIR}/deep-research-acceptance-receipt.sh}"
+  if [[ ! -x "${ACCEPTANCE_RECEIPT_SCRIPT}" ]] \
+    || ! printf '%s\n' "${acceptance_json}" \
+      | zsh "${ACCEPTANCE_RECEIPT_SCRIPT}" write "${RUN_ROOT}" "${TASK_ID}" >/dev/null; then
+    receipt_write_failed=true
+    acceptance_json="$(
+      jq '
+        .status = "fail"
+        | .summary.fail += 1
+        | .checks += [{
+            name:"acceptance_receipt",
+            status:"fail",
+            detail:"Durable acceptance receipt could not be persisted"
+          }]
+      ' <<<"${acceptance_json}"
+    )"
+  fi
+fi
+
+printf '%s\n' "${acceptance_json}"
+
+if (( fail_count > 0 )) || [[ "${receipt_write_failed}" == "true" ]]; then
   exit 1
 fi

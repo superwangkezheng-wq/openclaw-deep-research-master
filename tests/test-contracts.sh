@@ -822,8 +822,12 @@ cat > "${final}/visual_asset_plan.json" <<'EOF'
 EOF
 echo "# visual log" > "${final}/visual_asset_log.md"
 echo "stage report" > "${tmp_root}/.stage_report_outbox/t11-20260528120000-DELIVERABLE_READY.md"
-OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true OPENCLAW_WORKSPACE="${tmp_root}" OBSIDIAN_VAULT="${obsidian_vault}" zsh "${SCRIPT_ROOT}/deep-research-acceptance.sh" t11 > "${OUT}"
+DEEP_RESEARCH_ACCEPTANCE_NOW="2026-05-28T12:30:00+0800" OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true OPENCLAW_WORKSPACE="${tmp_root}" OBSIDIAN_VAULT="${obsidian_vault}" zsh "${SCRIPT_ROOT}/deep-research-acceptance.sh" t11 > "${OUT}"
 jq -e '.status == "pass_with_warnings" and .summary.fail == 0 and ([.checks[] | select(.name == "obsidian_sync" and .status == "pass")] | length == 1)' "${OUT}" >/dev/null || fail "acceptance gate did not pass with expected warning-only status"
+[[ -s "${run}/acceptance_report.json" ]] || fail "acceptance gate did not persist its durable receipt"
+jq -S . "${OUT}" > "${run}/acceptance.stdout.canonical.json"
+jq -S . "${run}/acceptance_report.json" > "${run}/acceptance.receipt.canonical.json"
+cmp -s "${run}/acceptance.stdout.canonical.json" "${run}/acceptance.receipt.canonical.json" || fail "acceptance stdout and durable receipt differ"
 
 echo "15/33 close accepted run marks completed only after acceptance passes and retries idempotently"
 printf '{"jobs":[' > "${tmp_root}/invalid-close-cron.json"
@@ -835,6 +839,7 @@ close_monitoring_env=(
 )
 if env "${close_monitoring_env[@]}" \
   OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true \
+  DEEP_RESEARCH_ACCEPTANCE_NOW="2026-05-28T12:30:00+0800" \
   OPENCLAW_DISABLE_STAGE_REPORTS=true \
   OPENCLAW_WORKSPACE="${tmp_root}" \
   OBSIDIAN_VAULT="${obsidian_vault}" \
@@ -842,9 +847,18 @@ if env "${close_monitoring_env[@]}" \
   fail "close accepted monitoring failure unexpectedly succeeded"
 fi
 jq -e '.status == "completed" and .stage_status == "accepted_complete"' "${run}/stage_status.json" >/dev/null || fail "business completion was rolled back after monitoring failure"
+acceptance_receipt_sha="$(shasum -a 256 "${run}/acceptance_report.json" | awk '{print $1}')"
+jq -e --arg sha "${acceptance_receipt_sha}" \
+  '.acceptance.receipt == "acceptance_report.json"
+   and .acceptance.immutable_receipt == ("acceptance_receipts/" + $sha + ".json")
+   and .acceptance.receipt_sha256 == $sha' \
+  "${run}/stage_status.json" >/dev/null || fail "completed state is not bound to the acceptance receipt"
+jq -S . "${run}/acceptance_report.json" > "${run}/acceptance.pre-tamper.canonical.json"
 sentinel_completed_at="2026-05-28T23:59:59+0800"
 jq --arg completed_at "${sentinel_completed_at}" '.completed_at = $completed_at' "${run}/stage_status.json" > "${run}/stage_status.retry.json"
 mv "${run}/stage_status.retry.json" "${run}/stage_status.json"
+jq '.checked_at = "tampered"' "${run}/acceptance_report.json" > "${run}/acceptance_report.tampered.json"
+mv "${run}/acceptance_report.tampered.json" "${run}/acceptance_report.json"
 run_completed_before="$(jq -s '[.[] | select(.event_type == "run_completed")] | length' "${run}/stage_events.jsonl")"
 cat > "${tmp_root}/invalid-close-cron.json" <<'EOF'
 {"jobs":[
@@ -852,10 +866,15 @@ cat > "${tmp_root}/invalid-close-cron.json" <<'EOF'
   {"id":"68b6f7f1-c187-4153-a8d9-f5ab7842afc6","enabled":false}
 ]}
 EOF
-env "${close_monitoring_env[@]}" OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true OPENCLAW_DISABLE_STAGE_REPORTS=true OPENCLAW_WORKSPACE="${tmp_root}" OBSIDIAN_VAULT="${obsidian_vault}" zsh "${SCRIPT_ROOT}/close-accepted-run.sh" t11 > "${OUT}"
+env "${close_monitoring_env[@]}" DEEP_RESEARCH_ACCEPTANCE_NOW="2026-05-28T12:30:00+0800" OPENCLAW_ACCEPTANCE_SKIP_RUNTIME_DOCTOR=true OPENCLAW_DISABLE_STAGE_REPORTS=true OPENCLAW_WORKSPACE="${tmp_root}" OBSIDIAN_VAULT="${obsidian_vault}" zsh "${SCRIPT_ROOT}/close-accepted-run.sh" t11 > "${OUT}"
 jq -e '.status == "completed" and .acceptance_status == "pass_with_warnings"' "${OUT}" >/dev/null || fail "close accepted run output invalid"
 jq -e --arg completed_at "${sentinel_completed_at}" '.completed_at == $completed_at' "${OUT}" >/dev/null || fail "close retry replaced the original completion timestamp"
 jq -e '.status == "completed" and .waiting_on == "none" and .stage_status == "accepted_complete" and .acceptance.status == "pass_with_warnings"' "${run}/stage_status.json" >/dev/null || fail "accepted run was not marked completed"
+[[ "$(jq -r '.checked_at' "${run}/acceptance_report.json")" != "tampered" ]] || fail "close retry trusted a tampered acceptance receipt"
+acceptance_receipt_sha="$(shasum -a 256 "${run}/acceptance_report.json" | awk '{print $1}')"
+jq -S . "${run}/acceptance_report.json" > "${run}/acceptance.post-retry.canonical.json"
+cmp -s "${run}/acceptance.pre-tamper.canonical.json" "${run}/acceptance.post-retry.canonical.json" || fail "close retry did not restore the canonical acceptance receipt"
+jq -e --arg sha "${acceptance_receipt_sha}" '.acceptance.receipt == "acceptance_report.json" and .acceptance.immutable_receipt == ("acceptance_receipts/" + $sha + ".json") and .acceptance.receipt_sha256 == $sha' "${run}/stage_status.json" >/dev/null || fail "close retry did not rebind the repaired acceptance receipt"
 run_completed_after="$(jq -s '[.[] | select(.event_type == "run_completed")] | length' "${run}/stage_events.jsonl")"
 assert_eq "${run_completed_after}" "${run_completed_before}" "close retry run_completed event count"
 tail -n 1 "${run}/stage_events.jsonl" | jq -e '.event_type == "stage_report_event" or .event_type == "run_completed"' >/dev/null || fail "close accepted run event missing"
