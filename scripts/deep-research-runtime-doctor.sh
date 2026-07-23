@@ -37,6 +37,35 @@ if [[ -f "${RAGFLOW_ENV_FILE}" ]]; then
   set +a
 fi
 
+dependency_preflight='{
+  "schema_version":"deep-research-dependency-preflight/v1",
+  "result":"failed",
+  "checks":{
+    "ragflow":{"status":"failed","datasets":[]},
+    "mineru":{"status":"failed"},
+    "embedding":{"status":"failed"}
+  },
+  "failures":[{"code":"dependency_preflight_missing","dependency":"runtime","detail":"Dependency preflight contract is not executable"}]
+}'
+DEPENDENCY_PREFLIGHT_SCRIPT="${DEEP_RESEARCH_DEPENDENCY_PREFLIGHT_SCRIPT:-${SCRIPT_DIR}/deep-research-dependency-preflight.sh}"
+if [[ -x "${DEPENDENCY_PREFLIGHT_SCRIPT}" ]]; then
+  dependency_preflight_output=""
+  if dependency_preflight_output="$(
+    OPENCLAW_WORKSPACE="${WORKSPACE_ROOT}" \
+      zsh "${DEPENDENCY_PREFLIGHT_SCRIPT}" 2>/dev/null
+  )"; then
+    if printf '%s' "${dependency_preflight_output}" | jq -e \
+      '.schema_version == "deep-research-dependency-preflight/v1" and .result == "passed"' \
+      >/dev/null 2>&1; then
+      dependency_preflight="${dependency_preflight_output}"
+    fi
+  elif printf '%s' "${dependency_preflight_output}" | jq -e \
+    '.schema_version == "deep-research-dependency-preflight/v1" and .result == "failed"' \
+    >/dev/null 2>&1; then
+    dependency_preflight="${dependency_preflight_output}"
+  fi
+fi
+
 anysearch_status='{"status":"unknown"}'
 if [[ -x "${SCRIPT_DIR}/anysearch-local.sh" ]]; then
   anysearch_status="$("${SCRIPT_DIR}/anysearch-local.sh" doctor 2>/dev/null || printf '{"status":"error"}')"
@@ -53,20 +82,21 @@ ragflow_sync_status="$(jq -n \
   }')"
 
 mineru_api_base="${MINERU_API_BASE:-http://127.0.0.1:${MINERU_API_PORT:-38886}}"
-mineru_api_status="missing"
-if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 5 "${mineru_api_base%/}/openapi.json" >/dev/null 2>&1; then
-  mineru_api_status="ready"
-fi
 mineru_status="$(jq -n \
-  --arg status "${mineru_api_status}" \
+  --arg status "$(
+    [[ "$(jq -r '.checks.mineru.status // "failed"' <<<"${dependency_preflight}")" == "passed" ]] \
+      && echo ready || echo missing
+  )" \
   --arg host_api "${mineru_api_base}" \
   --arg container_api "${MINERU_APISERVER:-http://host.docker.internal:38886}" \
   --arg backend "${MINERU_BACKEND:-pipeline}" \
+  --arg version "$(jq -r '.lineage.mineru.version // ""' <<<"${dependency_preflight}")" \
   '{
     status: $status,
     host_api: $host_api,
     container_api: $container_api,
-    backend: $backend
+    backend: $backend,
+    version: $version
   }')"
 
 visual_assets_status='{"status":"unknown"}'
@@ -136,6 +166,7 @@ fi
 
 jq -n \
   --argjson anysearch "${anysearch_status}" \
+  --argjson dependency_preflight "${dependency_preflight}" \
   --argjson ragflow_sync "${ragflow_sync_status}" \
   --argjson mineru "${mineru_status}" \
   --argjson visual_assets "${visual_assets_status}" \
@@ -146,6 +177,7 @@ jq -n \
   --argjson cron_state "${cron_state}" \
   '{
     anysearch: $anysearch,
+    dependency_preflight: $dependency_preflight,
     ragflow_sync: $ragflow_sync,
     mineru: $mineru,
     visual_assets: $visual_assets,
@@ -158,7 +190,10 @@ jq -n \
     checks: {
       anysearch_ready: ($anysearch.status == "ready"),
       ragflow_sync_ready: ($ragflow_sync.status == "ready"),
+      ragflow_dataset_ready: ($dependency_preflight.checks.ragflow.status == "passed"),
       mineru_api_ready: ($mineru.status == "ready"),
+      embedding_service_ready: ($dependency_preflight.checks.embedding.status == "passed"),
+      dependency_preflight_ok: ($dependency_preflight.result == "passed"),
       visual_assets_ready: ($visual_assets.status == "ready"),
       search_router_ready: ($search_router.status == "ready"),
       default_model_chain_ok: (
