@@ -5,16 +5,55 @@ set -euo pipefail
 usage() {
   cat <<'EOF' >&2
 Usage:
-  sync-rag-reference-folders.sh [all|business|style]
+  sync-rag-reference-folders.sh [all|business|style] [--dry-run] [--allow-prune] [--replace-existing] [--reparse-existing] [--limit <n>]
 
 Behavior:
   - all: sync both business-reference and style-reference
   - business: sync only the Stage 2 research reference folder
   - style: sync only the Stage 6 style reference folder
+  - --dry-run: produce a read-only sync plan; do not upload, replace, parse, or prune
+  - --allow-prune: allow deletion of remote mirror documents missing from the local folder
 EOF
 }
 
-TARGET="${1:-all}"
+TARGET="all"
+SYNC_ARGS=()
+DRY_RUN_MODE="0"
+if (( $# > 0 )); then
+  case "$1" in
+    all|business|style)
+      TARGET="$1"
+      shift
+      ;;
+  esac
+fi
+while (( $# > 0 )); do
+  case "$1" in
+    --dry-run|--allow-prune|--replace-existing|--reparse-existing)
+      [[ "$1" == "--dry-run" ]] && DRY_RUN_MODE="1"
+      SYNC_ARGS+=("$1")
+      shift
+      ;;
+    --limit)
+      if (( $# < 2 )) || [[ "${2:-}" == --* ]]; then
+        echo "--limit requires a numeric value" >&2
+        usage
+        exit 1
+      fi
+      SYNC_ARGS+=("$1" "$2")
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
 WORKSPACE_ROOT="${OPENCLAW_WORKSPACE:-${HOME}/.openclaw/workspace-deep-research-master}"
 SHARED_SYNC_SCRIPT="${RAGFLOW_SYNC_SCRIPT:-${WORKSPACE_ROOT}/ragflow_local_kb/sync_folder_to_ragflow.sh}"
 CONFIG_FILE="${DEEP_RESEARCH_RAGFLOW_FOLDER_MAPPING_FILE:-${WORKSPACE_ROOT}/deep-research/config/ragflow_folder_mappings.json}"
@@ -34,7 +73,46 @@ run_sync() {
     echo "Missing executable sync script: ${SHARED_SYNC_SCRIPT}" >&2
     exit 1
   fi
-  zsh "${SHARED_SYNC_SCRIPT}" --mapping "${mapping}" --report "${report_path}"
+  if [[ "${DRY_RUN_MODE}" == "1" ]]; then
+    RAGFLOW_FOLDER_MAPPING_FILE="${CONFIG_FILE}" zsh "${SHARED_SYNC_SCRIPT}" --mapping "${mapping}" "${SYNC_ARGS[@]}"
+  else
+    RAGFLOW_FOLDER_MAPPING_FILE="${CONFIG_FILE}" zsh "${SHARED_SYNC_SCRIPT}" --mapping "${mapping}" --report "${report_path}" "${SYNC_ARGS[@]}"
+  fi
+}
+
+validate_sync_report() {
+  local mapping="$1"
+  local report_json="$2"
+  local validation
+
+  validation="$(printf '%s\n' "${report_json}" | jq -r '
+    def bad_parse:
+      (.run // "") != "DONE"
+      or ((.retrievable_chunk_count // .chunk_count // 0) <= 0)
+      or ((.readback.status // "retrievable") != "retrievable");
+    def bad_doc:
+      ((.status // "") | test("blocked|failed|pending|timeout|cancel"; "i"))
+      or (((.status // "") == "skipped_existing") and (
+        ((.retrievable_chunk_count // 0) <= 0)
+        or (((.readback.status // "retrievable") != "retrievable") and ((.readback.status // "") != "skipped_by_limit"))
+      ));
+    if ((.results // []) | type) != "array" then
+      "missing results array"
+    elif any(.results[]?; (.status // "") == "blocked" or (.status // "") == "failed") then
+      "blocked sync plan or failed result"
+    elif any(.results[]?.parses[]?; bad_parse) then
+      "non-terminal parse, zero chunks, or failed readback"
+    elif any(.results[]?.documents[]?; bad_doc) then
+      "document is pending/failed/blocked or has zero retrievable chunks"
+    else
+      "ok"
+    end
+  ' 2>/dev/null || printf 'invalid JSON')"
+
+  if [[ "${validation}" != "ok" ]]; then
+    echo "RAGFlow sync report for ${mapping} failed contract: ${validation}" >&2
+    return 1
+  fi
 }
 
 remote_only_result() {
@@ -103,6 +181,7 @@ run_sync_json() {
     printf '%s\n' "${output}" >&2
     return 1
   fi
+  validate_sync_report "${mapping}" "${output}" || return 1
   printf '%s\n' "${output}"
 }
 
@@ -120,10 +199,6 @@ case "${TARGET}" in
   style)
     style_result="$(run_sync_json style-reference "${STYLE_REPORT}")"
     ;;
-  -h|--help)
-    usage
-    exit 0
-    ;;
   *)
     echo "Unknown target: ${TARGET}" >&2
     usage
@@ -131,7 +206,7 @@ case "${TARGET}" in
     ;;
 esac
 
-jq -n \
+summary_payload="$(jq -n \
   --arg executed_at "${NOW}" \
   --arg target "${TARGET}" \
   --argjson business "${business_result}" \
@@ -139,8 +214,14 @@ jq -n \
   '{
     executed_at: $executed_at,
     target: $target,
+    dry_run: (($business.dry_run // $style.dry_run // false) == true),
     business: $business,
     style: $style
-  }' > "${SUMMARY_JSON}"
+  }')"
 
-cat "${SUMMARY_JSON}"
+if [[ "${DRY_RUN_MODE}" == "1" ]]; then
+  printf '%s\n' "${summary_payload}"
+else
+  printf '%s\n' "${summary_payload}" > "${SUMMARY_JSON}"
+  cat "${SUMMARY_JSON}"
+fi

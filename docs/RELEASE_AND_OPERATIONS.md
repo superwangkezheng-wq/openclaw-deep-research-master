@@ -30,6 +30,21 @@ zsh scripts/local-runtime-smoke.sh
 
 This verifies live model/search/RAG/visual/Feishu/Obsidian wiring without printing secrets.
 
+## RAGFlow Reference Sync Contract
+
+Business/style reference sync is intentionally guarded:
+
+```bash
+zsh scripts/sync-rag-reference-folders.sh business --dry-run
+zsh scripts/sync-rag-reference-folders.sh style --dry-run
+```
+
+Dry-run emits a read-only plan with `upload`, `replace`, `prune`, `skip`, and blocked-prune decisions. It must not write `kb-sync-summary.latest.json`.
+
+A real sync is successful only when parsed documents reach terminal `DONE`, have non-zero retrievable chunks, and pass document-id-limited retrieval readback. `RUNNING`, `TIMEOUT`, `FAIL`, `CANCEL`, bad JSON, parser fallback, zero chunks, and empty readback are not accepted as success.
+
+Parser profiles are part of the contract. PPT/PPTX files must use the `presentation` chunk method. PDFs must declare MinerU parser settings. Existing healthy remote documents can be adopted, but unhealthy same-name documents are reported as planned replacements and should be remediated explicitly.
+
 ## Acceptance
 
 Before a run is considered complete:

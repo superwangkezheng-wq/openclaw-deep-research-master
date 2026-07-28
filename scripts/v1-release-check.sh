@@ -39,6 +39,7 @@ fi
 
 section "contract tests"
 zsh tests/test-contracts.sh
+zsh tests/test-ragflow-sync-contracts.sh
 
 section "script syntax"
 for script in scripts/*.sh; do

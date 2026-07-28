@@ -6,16 +6,16 @@ unsetopt xtrace 2>/dev/null || true
 usage() {
   cat <<'EOF' >&2
 Usage:
-  sync_folder_to_ragflow.sh --mapping <business-reference|style-reference> [--replace-existing] [--limit <n>] [--report <path>]
-  sync_folder_to_ragflow.sh --all [--replace-existing] [--limit <n>] [--report <path>]
+  sync_folder_to_ragflow.sh --mapping <business-reference|style-reference> [--dry-run] [--allow-prune] [--replace-existing] [--limit <n>] [--report <path>]
+  sync_folder_to_ragflow.sh --all [--dry-run] [--allow-prune] [--replace-existing] [--limit <n>] [--report <path>]
 
 Behavior:
   1. Read folder/dataset mapping from folder_mappings.json
   2. Scan supported local files from the mapped folder
-  3. Reconcile the remote dataset to the local folder mirror
+  3. Plan or reconcile the remote dataset to the local folder mirror
   4. Upload files missing from the target dataset
   5. Optionally replace same-name files when --replace-existing is set
-  6. Trigger parsing and poll until terminal state
+  6. Trigger parsing, poll until terminal state, and verify document-id limited retrieval readback
 
 Supported extensions:
   pdf md doc docx ppt pptx xls xlsx txt csv html htm
@@ -23,8 +23,8 @@ EOF
 }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONFIG_FILE="${RAGFLOW_FOLDER_MAPPING_FILE:-${SCRIPT_DIR}/folder_mappings.json}"
 DEFAULT_OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE:-${HOME}/.openclaw/workspace-deep-research-master}"
+CONFIG_FILE="${RAGFLOW_FOLDER_MAPPING_FILE:-${DEEP_RESEARCH_RAGFLOW_FOLDER_MAPPING_FILE:-${DEFAULT_OPENCLAW_WORKSPACE}/deep-research/config/ragflow_folder_mappings.json}}"
 ENV_FILE="${DEEP_RESEARCH_RAGFLOW_ENV_FILE:-${DEFAULT_OPENCLAW_WORKSPACE}/deep-research/config/ragflow.local.env}"
 STATE_DIR="${RAGFLOW_SYNC_STATE_DIR:-${SCRIPT_DIR}/state}"
 JQ_BIN="${JQ_BIN:-/usr/bin/jq}"
@@ -36,13 +36,16 @@ STUCK_RUNNING_SECONDS="${RAGFLOW_STUCK_RUNNING_SECONDS:-900}"
 PARSE_BATCH_SIZE="${RAGFLOW_PARSE_BATCH_SIZE:-2}"
 POLL_MAX_ATTEMPTS="${RAGFLOW_POLL_MAX_ATTEMPTS:-180}"
 POLL_INTERVAL_SECONDS="${RAGFLOW_POLL_INTERVAL_SECONDS:-2}"
-RUNNING_ACCEPT_AFTER_SECONDS="${RAGFLOW_RUNNING_ACCEPT_AFTER_SECONDS:-90}"
 GHOST_RUNNING_MAX_PROGRESS="${RAGFLOW_GHOST_RUNNING_MAX_PROGRESS:-0.15}"
+READBACK_MAX_EXISTING="${RAGFLOW_SYNC_READBACK_MAX_EXISTING:-200}"
+READBACK_TIMEOUT_SECONDS="${RAGFLOW_READBACK_TIMEOUT_SECONDS:-30}"
 
 MAPPING=""
 SYNC_ALL="0"
 REPLACE_EXISTING="0"
 REPARSE_EXISTING="0"
+DRY_RUN="0"
+ALLOW_PRUNE="0"
 LIMIT="0"
 REPORT=""
 
@@ -60,11 +63,24 @@ while [[ $# -gt 0 ]]; do
       REPLACE_EXISTING="1"
       shift 1
       ;;
+    --dry-run)
+      DRY_RUN="1"
+      shift 1
+      ;;
+    --allow-prune)
+      ALLOW_PRUNE="1"
+      shift 1
+      ;;
     --reparse-existing)
       REPARSE_EXISTING="1"
       shift 1
       ;;
     --limit)
+      if (( $# < 2 )) || [[ "${2:-}" == --* ]]; then
+        echo "--limit requires a numeric value" >&2
+        usage
+        exit 1
+      fi
       LIMIT="${2:-0}"
       shift 2
       ;;
@@ -83,6 +99,23 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ ! "${LIMIT}" =~ '^[0-9]+$' ]]; then
+  echo "--limit requires a non-negative integer value" >&2
+  exit 1
+fi
+if [[ ! "${READBACK_MAX_EXISTING}" =~ '^[0-9]+$' ]]; then
+  echo "RAGFLOW_SYNC_READBACK_MAX_EXISTING must be a non-negative integer" >&2
+  exit 1
+fi
+if [[ ! "${READBACK_TIMEOUT_SECONDS}" =~ '^[0-9]+([.][0-9]+)?$' ]]; then
+  echo "RAGFLOW_READBACK_TIMEOUT_SECONDS must be numeric" >&2
+  exit 1
+fi
+if ! "${PYTHON_BIN}" -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) > 0 else 1)' "${READBACK_TIMEOUT_SECONDS}"; then
+  echo "RAGFLOW_READBACK_TIMEOUT_SECONDS must be greater than 0" >&2
+  exit 1
+fi
 
 if [[ ! -f "${CONFIG_FILE}" ]]; then
   echo "Missing mapping config: ${CONFIG_FILE}" >&2
@@ -106,12 +139,12 @@ RAGFLOW_REDIS_PASSWORD="${RAGFLOW_REDIS_PASSWORD:-}"
 RAGFLOW_TASK_GROUP="${RAGFLOW_TASK_GROUP:-rag_flow_svr_task_broker}"
 RAGFLOW_TASK_STREAMS="${RAGFLOW_TASK_STREAMS:-rag_flow_svr_queue rag_flow_svr_queue_1}"
 
-if [[ -z "${RAGFLOW_API_KEY}" ]]; then
+if [[ -z "${RAGFLOW_API_KEY}" && ! ( "${DRY_RUN}" == "1" && -n "${RAGFLOW_SYNC_DOCS_JSON_FILE:-}" ) ]]; then
   echo "Missing RAGFLOW_API_KEY in ${ENV_FILE}" >&2
   exit 1
 fi
 
-if [[ -z "${DOCKER_BIN}" ]]; then
+if [[ -z "${DOCKER_BIN}" && "${DRY_RUN}" != "1" ]]; then
   echo "Missing docker binary in PATH" >&2
   exit 1
 fi
@@ -230,6 +263,18 @@ PY
 
 list_docs() {
   local dataset_id="$1"
+  if [[ -n "${RAGFLOW_SYNC_DOCS_JSON_FILE:-}" ]]; then
+    if [[ "${RAGFLOW_SYNC_TEST_FIXTURES:-0}" != "1" ]]; then
+      echo "RAGFLOW_SYNC_DOCS_JSON_FILE is only allowed with RAGFLOW_SYNC_TEST_FIXTURES=1" >&2
+      return 1
+    fi
+    if [[ ! -r "${RAGFLOW_SYNC_DOCS_JSON_FILE}" ]]; then
+      echo "Unreadable RAGFLOW_SYNC_DOCS_JSON_FILE: ${RAGFLOW_SYNC_DOCS_JSON_FILE}" >&2
+      return 1
+    fi
+    cat "${RAGFLOW_SYNC_DOCS_JSON_FILE}"
+    return 0
+  fi
   api_request GET "/api/v1/datasets/${dataset_id}/documents?page_size=500"
 }
 
@@ -270,6 +315,18 @@ upload_doc() {
   local dataset_id="$1"
   local file_path="$2"
   local remote_name="${3:-${file_path:t}}"
+  if [[ -n "${RAGFLOW_SYNC_UPLOAD_RESPONSE_JSON_FILE:-}" ]]; then
+    if [[ "${RAGFLOW_SYNC_TEST_FIXTURES:-0}" != "1" ]]; then
+      echo "RAGFLOW_SYNC_UPLOAD_RESPONSE_JSON_FILE is only allowed with RAGFLOW_SYNC_TEST_FIXTURES=1" >&2
+      return 1
+    fi
+    if [[ ! -r "${RAGFLOW_SYNC_UPLOAD_RESPONSE_JSON_FILE}" ]]; then
+      echo "Unreadable RAGFLOW_SYNC_UPLOAD_RESPONSE_JSON_FILE: ${RAGFLOW_SYNC_UPLOAD_RESPONSE_JSON_FILE}" >&2
+      return 1
+    fi
+    cat "${RAGFLOW_SYNC_UPLOAD_RESPONSE_JSON_FILE}"
+    return 0
+  fi
   if upload_doc_host "${dataset_id}" "${file_path}" "${remote_name}" 2>/tmp/ragflow-folder-sync.err; then
     return 0
   fi
@@ -292,6 +349,19 @@ resolve_parser_config() {
      | (.mappings[$name].extension_profiles[$ext].parser_config // {}) as $extcfg
      | $base * $extcfg' \
     "${CONFIG_FILE}"
+}
+
+normalize_parser_config_json() {
+  local parser_config_json="${1:-}"
+  if [[ -z "${parser_config_json}" ]]; then
+    printf '%s\n' '{}'
+    return 0
+  fi
+  if printf '%s' "${parser_config_json}" | "${JQ_BIN}" -e 'type == "object"' >/dev/null 2>&1; then
+    printf '%s\n' "${parser_config_json}"
+  else
+    printf '%s\n' '{}'
+  fi
 }
 
 resolve_dataset_parser_config() {
@@ -402,23 +472,113 @@ poll_doc() {
         '{document_id:$document_id, run:$run, chunk_count:$chunk_count, retrievable_chunk_count:$retrievable_chunk_count, token_count:$token_count, progress:$progress}'
       return 0
     fi
-    if [[ "${run_state}" == "RUNNING" && $((attempts * POLL_INTERVAL_SECONDS)) -ge "${RUNNING_ACCEPT_AFTER_SECONDS}" ]]; then
-      "${JQ_BIN}" -c -n \
-        --arg document_id "${doc_id}" \
-        --arg run "${run_state}" \
-        --argjson chunk_count "${chunk_count}" \
-        --argjson retrievable_chunk_count "${chunk_count}" \
-        --argjson token_count "${token_count}" \
-        --argjson progress "${progress}" \
-        '{document_id:$document_id, run:$run, accepted:true, chunk_count:$chunk_count, retrievable_chunk_count:$retrievable_chunk_count, token_count:$token_count, progress:$progress}'
-      return 0
-    fi
     sleep "${POLL_INTERVAL_SECONDS}"
     attempts=$((attempts + 1))
   done
   "${JQ_BIN}" -c -n \
     --arg document_id "${doc_id}" \
-    '{document_id:$document_id, run:"TIMEOUT", chunk_count:0, token_count:0, progress:0}'
+    '{document_id:$document_id, run:"TIMEOUT", accepted:false, chunk_count:0, retrievable_chunk_count:0, token_count:0, progress:0}'
+}
+
+readback_doc() {
+  local mapping_name="$1"
+  local profile="$2"
+  local doc_id="$3"
+  local probe_text="${4:-}"
+  local query top_k query_script response hit_count candidate_query readback_status
+
+  if [[ -n "${RAGFLOW_SYNC_READBACK_JSON_FILE:-}" ]]; then
+    if [[ "${RAGFLOW_SYNC_TEST_FIXTURES:-0}" != "1" ]]; then
+      "${JQ_BIN}" -c -n --arg document_id "${doc_id}" '{document_id:$document_id, hit_count:0, status:"fixture_not_allowed"}'
+      return 0
+    fi
+    if [[ ! -r "${RAGFLOW_SYNC_READBACK_JSON_FILE}" ]]; then
+      "${JQ_BIN}" -c -n --arg document_id "${doc_id}" --arg file "${RAGFLOW_SYNC_READBACK_JSON_FILE}" '{document_id:$document_id, hit_count:0, status:"fixture_unreadable", file:$file}'
+      return 0
+    fi
+    hit_count="$("${JQ_BIN}" -r --arg doc_id "${doc_id}" '.documents[$doc_id].hit_count // 0' "${RAGFLOW_SYNC_READBACK_JSON_FILE}")"
+    if [[ ! "${hit_count}" =~ '^[0-9]+$' ]]; then
+      hit_count="0"
+    fi
+    "${JQ_BIN}" -c -n \
+      --arg document_id "${doc_id}" \
+      --argjson hit_count "${hit_count}" \
+      '{document_id:$document_id, hit_count:$hit_count, status:(if $hit_count > 0 then "retrievable" else "empty" end), mode:"fixture"}'
+    return 0
+  fi
+
+  query="$(resolve_retrieval_default "${mapping_name}" "query")"
+  [[ -n "${query}" ]] || query="${mapping_name//-/ } readback"
+  top_k="$(resolve_retrieval_default "${mapping_name}" "top_k")"
+  [[ -n "${top_k}" ]] || top_k="3"
+  if [[ ! "${top_k}" =~ '^[0-9]+$' || "${top_k}" -lt 1 ]]; then
+    top_k="3"
+  fi
+  query_script="${DEFAULT_OPENCLAW_WORKSPACE}/scripts/ragflow-local-query.sh"
+  if [[ ! -f "${query_script}" ]]; then
+    "${JQ_BIN}" -c -n --arg document_id "${doc_id}" '{document_id:$document_id, hit_count:0, status:"query_script_missing"}'
+    return 0
+  fi
+
+  local -a candidate_queries
+  candidate_queries=("${query}")
+  if [[ -n "${probe_text}" && "${probe_text}" != "${query}" ]]; then
+    candidate_queries+=("${probe_text}")
+  fi
+  readback_status=""
+  for candidate_query in "${candidate_queries[@]}"; do
+    if ! response="$("${PYTHON_BIN}" - "${READBACK_TIMEOUT_SECONDS}" "${query_script}" "${profile}" "${candidate_query}" "${top_k}" "${doc_id}" 2>/tmp/ragflow-sync-readback.err <<'PY'
+import subprocess
+import sys
+
+timeout = float(sys.argv[1] or 30)
+script, profile, query, top_k, doc_id = sys.argv[2:7]
+try:
+    proc = subprocess.run(
+        ["zsh", script, "--profile", profile, "--query", query, "--top-k", top_k, "--document-ids", doc_id],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+except subprocess.TimeoutExpired:
+    sys.stderr.write(f"readback timed out after {timeout:g}s")
+    raise SystemExit(124)
+
+sys.stdout.write(proc.stdout)
+sys.stderr.write(proc.stderr)
+raise SystemExit(proc.returncode)
+PY
+)"; then
+      readback_status="$("${JQ_BIN}" -c -n \
+        --arg document_id "${doc_id}" \
+        --arg query "${candidate_query}" \
+        --arg error "$(head -c 200 /tmp/ragflow-sync-readback.err 2>/dev/null)" \
+        '{document_id:$document_id, query:$query, hit_count:0, status:"query_failed", error:$error}')"
+      continue
+    fi
+    hit_count="$(printf '%s' "${response}" | "${JQ_BIN}" -r --arg doc_id "${doc_id}" '
+      if ((.data.total? // null) != null) then
+        (.data.total // 0)
+      elif ((.data.chunks? // null) | type) == "array" then
+        (.data.chunks | length)
+      else
+        ([.. | objects | select((.document_id? // .doc_id? // .id? // "") == $doc_id)] | length)
+      end
+    ' 2>/dev/null || echo 0)"
+    if [[ ! "${hit_count}" =~ '^[0-9]+$' ]]; then
+      hit_count="0"
+    fi
+    readback_status="$("${JQ_BIN}" -c -n \
+      --arg document_id "${doc_id}" \
+      --arg query "${candidate_query}" \
+      --argjson hit_count "${hit_count}" \
+      '{document_id:$document_id, query:$query, hit_count:$hit_count, status:(if $hit_count > 0 then "retrievable" else "empty" end), mode:"ragflow-local-query"}')"
+    if (( hit_count > 0 )); then
+      printf '%s\n' "${readback_status}"
+      return 0
+    fi
+  done
+  printf '%s\n' "${readback_status}"
 }
 
 process_parse_targets() {
@@ -692,6 +852,254 @@ resolve_remote_name() {
     "${CONFIG_FILE}"
 }
 
+validate_unique_remote_names() {
+  local names_file="$1"
+  local duplicates
+  duplicates="$(sort "${names_file}" | uniq -d)"
+  if [[ -n "${duplicates}" ]]; then
+    echo "duplicate basename / remote name in mapped folder: ${duplicates//$'\n'/, }" >&2
+    return 1
+  fi
+}
+
+validate_parser_profiles_for_files() {
+  local mapping_name="$1"
+  local -a files
+  files=("$@")
+  files=("${(@)files[2,-1]}")
+  local file_path extension chunk_method parser_config_json
+  for file_path in "${files[@]}"; do
+    extension="${file_path:e:l}"
+    chunk_method="$(resolve_chunk_method "${mapping_name}" "${extension}")"
+    parser_config_json="$(resolve_parser_config "${mapping_name}" "${extension}")"
+    parser_config_json="$(normalize_parser_config_json "${parser_config_json}")"
+    case "${extension}" in
+      ppt|pptx)
+        if [[ "${chunk_method}" != "presentation" ]]; then
+          echo "missing extension_profiles ${extension}.chunk_method=presentation for ${mapping_name}" >&2
+          return 1
+        fi
+        ;;
+      pdf)
+        if ! printf '%s' "${parser_config_json}" | "${JQ_BIN}" -e '.mineru_formula_enable == true and .mineru_table_enable == true and ((.mineru_parse_method // "") | length > 0)' >/dev/null; then
+          echo "missing extension_profiles pdf.parser_config MinerU settings for ${mapping_name}" >&2
+          return 1
+        fi
+        ;;
+    esac
+  done
+}
+
+remote_prune_items() {
+  local docs_json="$1"
+  local desired_names_file="$2"
+
+  while IFS=$'\t' read -r remote_name remote_id remote_run remote_chunk_count; do
+    [[ -n "${remote_name}" && -n "${remote_id}" ]] || continue
+    if grep -Fqx -- "${remote_name}" "${desired_names_file}"; then
+      continue
+    fi
+    if [[ "${ALLOW_PRUNE}" == "1" ]]; then
+      printf '%s\n' "{\"name\":$(json_escape "${remote_name}"),\"status\":\"would_prune\",\"document_id\":\"${remote_id}\",\"previous_run\":$(json_escape "${remote_run}"),\"retrievable_chunk_count\":${remote_chunk_count}}"
+    else
+      printf '%s\n' "{\"name\":$(json_escape "${remote_name}"),\"status\":\"blocked_prune_without_allow_prune\",\"document_id\":\"${remote_id}\",\"previous_run\":$(json_escape "${remote_run}"),\"retrievable_chunk_count\":${remote_chunk_count}}"
+    fi
+  done < <(
+    printf '%s' "${docs_json}" \
+      | "${JQ_BIN}" -r '.data.docs[]? | [.name, .id, (.run // ""), ((.chunk_count // 0) | tostring)] | @tsv'
+  )
+}
+
+classify_existing_doc() {
+  local manifest_sha256="$1"
+  local manifest_size="$2"
+  local local_sha256="$3"
+  local local_size="$4"
+  local existing_run="$5"
+  local existing_chunk_total="$6"
+  local existing_process_duration="${7:-0}"
+  local existing_progress="${8:-0}"
+  local existing_progress_msg="${9:-}"
+  local action="skip_existing"
+  local reason=""
+  local ghost_running="0"
+
+  if [[ "${existing_run}" == "RUNNING" && "${existing_chunk_total}" == "0" ]]; then
+    ghost_running="$(is_ghost_running_doc "${existing_process_duration}" "${existing_progress}" "${existing_progress_msg}")"
+  fi
+
+  if [[ "${REPLACE_EXISTING}" == "1" ]]; then
+    action="replace"
+    reason="replace_existing_flag"
+  elif [[ -z "${manifest_sha256}" && "${existing_run}" == "DONE" && "${existing_chunk_total}" -gt 0 ]]; then
+    action="adopt_existing"
+  elif [[ -z "${manifest_sha256}" ]]; then
+    action="replace"
+    reason="bootstrap_reconcile_unhealthy_remote"
+  elif [[ "${manifest_sha256}" != "${local_sha256}" || "${manifest_size}" != "${local_size}" ]]; then
+    action="replace"
+    reason="local_content_changed"
+  elif [[ "${existing_run}" == "FAIL" || "${existing_run}" == "CANCEL" || "${existing_run}" == "TIMEOUT" ]]; then
+    action="replace"
+    reason="remote_parse_failed"
+  elif [[ "${ghost_running}" == "1" ]]; then
+    action="replace"
+    reason="stuck_running_no_real_progress"
+  elif [[ "${existing_run}" == "RUNNING" ]]; then
+    action="pending"
+    reason="remote_running"
+  elif [[ "${existing_chunk_total}" == "0" ]]; then
+    action="replace"
+    reason="remote_empty_chunks"
+  fi
+
+  "${JQ_BIN}" -c -n \
+    --arg action "${action}" \
+    --arg reason "${reason}" \
+    --arg ghost_running "${ghost_running}" \
+    '{action:$action, reason:$reason, ghost_running:($ghost_running == "1")}'
+}
+
+emit_dry_run_plan() {
+  local mapping_name="$1"
+  local folder="$2"
+  local dataset_id="$3"
+  local profile="$4"
+  local description="$5"
+  local docs_json="$6"
+  local manifest_file="$7"
+  local desired_names_file="$8"
+  shift 8
+  local -a files
+  files=("$@")
+  local -a report_items
+  local file_path file_name remote_name extension local_sha256 local_size manifest_sha256 manifest_size existing_doc_json existing_id existing_run existing_chunk_total existing_process_duration existing_progress existing_progress_msg chunk_method parser_config_json plan_status replace_reason classification_json class_action
+  local upload_count=0
+  local replace_count=0
+  local prune_count=0
+  local skip_count=0
+  local empty_count=0
+  local blocked_count=0
+
+  for file_path in "${files[@]}"; do
+    if [[ ! -s "${file_path}" ]]; then
+      empty_count=$((empty_count + 1))
+      report_items+=("{\"file\":$(json_escape "${file_path}"),\"name\":$(json_escape "${file_path:t}"),\"status\":\"empty_file\"}")
+      continue
+    fi
+    file_name="${file_path:t}"
+    remote_name="$(resolve_remote_name "${mapping_name}" "${file_name}")"
+    extension="${file_path:e:l}"
+    local_sha256="$(compute_sha256 "${file_path}")"
+    local_size="$(stat -f '%z' "${file_path}")"
+    manifest_sha256="$(manifest_get "${manifest_file}" "${remote_name}" "sha256")"
+    manifest_size="$(manifest_get "${manifest_file}" "${remote_name}" "size")"
+    existing_doc_json="$(printf '%s' "${docs_json}" | "${JQ_BIN}" -c --arg name "${remote_name}" '.data.docs[]? | select(.name == $name) | {id, run, size, update_time, create_time, process_duration, progress, progress_msg, chunk_count}' | head -n 1)"
+    if [[ -n "${existing_doc_json}" ]]; then
+      existing_id="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.id // empty')"
+      existing_run="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.run // empty')"
+      existing_chunk_total="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.chunk_count // 0')"
+      existing_process_duration="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.process_duration // 0')"
+      existing_progress="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.progress // 0')"
+      existing_progress_msg="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.progress_msg // ""')"
+    else
+      existing_id=""
+      existing_run=""
+      existing_chunk_total="0"
+      existing_process_duration="0"
+      existing_progress="0"
+      existing_progress_msg=""
+    fi
+    chunk_method="$(resolve_chunk_method "${mapping_name}" "${extension}")"
+    parser_config_json="$(resolve_parser_config "${mapping_name}" "${extension}")"
+    parser_config_json="$(normalize_parser_config_json "${parser_config_json}")"
+    plan_status="would_upload"
+    replace_reason=""
+    if [[ -n "${existing_id}" ]]; then
+      classification_json="$(classify_existing_doc "${manifest_sha256}" "${manifest_size}" "${local_sha256}" "${local_size}" "${existing_run}" "${existing_chunk_total}" "${existing_process_duration}" "${existing_progress}" "${existing_progress_msg}")"
+      class_action="$(printf '%s' "${classification_json}" | "${JQ_BIN}" -r '.action')"
+      replace_reason="$(printf '%s' "${classification_json}" | "${JQ_BIN}" -r '.reason')"
+      case "${class_action}" in
+        replace) plan_status="would_replace" ;;
+        adopt_existing) plan_status="would_adopt_existing" ;;
+        pending) plan_status="pending_remote_running" ;;
+        *) plan_status="would_skip_existing" ;;
+      esac
+    fi
+    case "${plan_status}" in
+      would_upload) upload_count=$((upload_count + 1)) ;;
+      would_replace) replace_count=$((replace_count + 1)) ;;
+      would_skip_existing|would_adopt_existing) skip_count=$((skip_count + 1)) ;;
+      pending_remote_running) blocked_count=$((blocked_count + 1)) ;;
+    esac
+    report_items+=("$("${JQ_BIN}" -c -n \
+      --arg file "${file_path}" \
+      --arg name "${remote_name}" \
+      --arg status "${plan_status}" \
+      --arg document_id "${existing_id}" \
+      --arg chunk_method "${chunk_method}" \
+      --argjson parser_config "${parser_config_json}" \
+      --arg replace_reason "${replace_reason}" \
+      --argjson retrievable_chunk_count "${existing_chunk_total}" \
+      '{file:$file,name:$name,status:$status,document_id:$document_id,chunk_method:$chunk_method,parser_config:$parser_config,retrievable_chunk_count:$retrievable_chunk_count}
+       | if ($replace_reason | length) > 0 then .replace_reason = $replace_reason else . end')"
+    )
+  done
+
+  local -a prune_items
+  prune_items=("${(@f)$(remote_prune_items "${docs_json}" "${desired_names_file}")}")
+  if (( ${#prune_items[@]} == 1 )) && [[ -z "${prune_items[1]}" ]]; then
+    prune_items=()
+  fi
+  for item in "${prune_items[@]}"; do
+    [[ -n "${item}" ]] || continue
+    prune_count=$((prune_count + 1))
+    if printf '%s' "${item}" | "${JQ_BIN}" -e '.status == "blocked_prune_without_allow_prune"' >/dev/null; then
+      blocked_count=$((blocked_count + 1))
+    fi
+    report_items+=("${item}")
+  done
+
+  local report_file
+  report_file="$(mktemp)"
+  if (( ${#report_items[@]} > 0 )); then
+    printf '%s\n' "${report_items[@]}" > "${report_file}"
+  fi
+  "${JQ_BIN}" -c -n \
+    --arg mapping "${mapping_name}" \
+    --arg folder "${folder}" \
+    --arg dataset_id "${dataset_id}" \
+    --arg profile "${profile}" \
+    --arg description "${description}" \
+    --argjson upload_count "${upload_count}" \
+    --argjson replace_count "${replace_count}" \
+    --argjson prune_count "${prune_count}" \
+    --argjson skip_count "${skip_count}" \
+    --argjson empty_count "${empty_count}" \
+    --argjson blocked_count "${blocked_count}" \
+    --rawfile documents_raw "${report_file}" \
+    '{
+      mapping: $mapping,
+      folder: $folder,
+      dataset_id: $dataset_id,
+      profile: $profile,
+      description: $description,
+      status: (if $blocked_count > 0 then "blocked" else "planned" end),
+      dry_run: true,
+      documents: (($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson))),
+      parses: [],
+      plan: {
+        upload_count: $upload_count,
+        replace_count: $replace_count,
+        prune_count: $prune_count,
+        skip_count: $skip_count,
+        empty_count: $empty_count,
+        blocked_count: $blocked_count
+      }
+    }'
+  rm -f "${report_file}"
+}
+
 sync_mapping() {
   local mapping_name="$1"
   local folder dataset_id profile description
@@ -714,8 +1122,10 @@ sync_mapping() {
 
   local docs_json
   docs_json="$(list_docs "${dataset_id}")"
-  update_dataset_profile "${dataset_id}" "${mapping_name}"
-  docs_json="$(list_docs "${dataset_id}")"
+  if [[ "${DRY_RUN}" != "1" ]]; then
+    update_dataset_profile "${dataset_id}" "${mapping_name}"
+    docs_json="$(list_docs "${dataset_id}")"
+  fi
 
   local -a files
   files=("${(@f)$(supported_files "${folder}")}")
@@ -729,10 +1139,12 @@ sync_mapping() {
   local -a uploaded_ids
   local -a report_items
   local -a parse_targets
+  typeset -A parse_probe_by_doc_id
   local desired_names_file
   local uploaded_count=0
   local skipped_count=0
   local empty_count=0
+  local existing_readback_count=0
   desired_names_file="$(mktemp)"
   : > "${desired_names_file}"
 
@@ -742,9 +1154,67 @@ sync_mapping() {
     remote_name="$(resolve_remote_name "${mapping_name}" "${file_name}")"
     printf '%s\n' "${remote_name}" >> "${desired_names_file}"
   done
+  if ! validate_unique_remote_names "${desired_names_file}"; then
+    rm -f "${desired_names_file}"
+    return 1
+  fi
+  if ! validate_parser_profiles_for_files "${mapping_name}" "${files[@]}"; then
+    rm -f "${desired_names_file}"
+    return 1
+  fi
+
+  if [[ "${DRY_RUN}" == "1" ]]; then
+    emit_dry_run_plan "${mapping_name}" "${folder}" "${dataset_id}" "${profile}" "${description}" "${docs_json}" "${manifest_file}" "${desired_names_file}" "${files[@]}"
+    rm -f "${desired_names_file}"
+    return 0
+  fi
 
   local -a pruned_items
-  pruned_items=("${(@f)$(prune_remote_docs "${dataset_id}" "${docs_json}" "${manifest_file}" "${desired_names_file}")}")
+  if [[ "${ALLOW_PRUNE}" != "1" ]]; then
+    pruned_items=("${(@f)$(remote_prune_items "${docs_json}" "${desired_names_file}")}")
+    if (( ${#pruned_items[@]} == 1 )) && [[ -z "${pruned_items[1]}" ]]; then
+      pruned_items=()
+    fi
+    if (( ${#pruned_items[@]} > 0 )); then
+      report_items+=("${pruned_items[@]}")
+      local blocked_report_file
+      blocked_report_file="$(mktemp)"
+      printf '%s\n' "${report_items[@]}" > "${blocked_report_file}"
+      "${JQ_BIN}" -c -n \
+        --arg mapping "${mapping_name}" \
+        --arg folder "${folder}" \
+        --arg dataset_id "${dataset_id}" \
+        --arg profile "${profile}" \
+        --arg description "${description}" \
+        --rawfile documents_raw "${blocked_report_file}" \
+        '{
+          mapping: $mapping,
+          folder: $folder,
+          dataset_id: $dataset_id,
+          profile: $profile,
+          description: $description,
+          status: "blocked",
+          uploaded_count: 0,
+          skipped_existing_count: 0,
+          empty_file_count: 0,
+          documents: (($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson))),
+          parses: [],
+          plan: {
+            upload_count: 0,
+            replace_count: 0,
+            prune_count: (($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson)) | length),
+            skip_count: 0,
+            empty_count: 0,
+            blocked_count: (($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson)) | length)
+          }
+        }'
+      rm -f "${blocked_report_file}" "${desired_names_file}"
+      return 0
+    fi
+    pruned_items=()
+  else
+    pruned_items=("${(@f)$(prune_remote_docs "${dataset_id}" "${docs_json}" "${manifest_file}" "${desired_names_file}")}")
+  fi
   if (( ${#pruned_items[@]} == 1 )) && [[ -z "${pruned_items[1]}" ]]; then
     pruned_items=()
   fi
@@ -753,7 +1223,7 @@ sync_mapping() {
 
   for file_path in "${files[@]}"; do
     local file_name remote_name doc_id existing_id action upload_response extension chunk_method parser_config_json
-    local local_sha256 local_size manifest_sha256 manifest_size existing_doc_json existing_run existing_chunk_total replace_reason existing_process_duration existing_progress existing_progress_msg ghost_running
+    local local_sha256 local_size manifest_sha256 manifest_size existing_doc_json existing_run existing_chunk_total replace_reason existing_process_duration existing_progress existing_progress_msg classification_json class_action readback_json
     if [[ ! -s "${file_path}" ]]; then
       empty_count=$((empty_count + 1))
       report_items+=("{\"file\":$(json_escape "${file_path}"),\"name\":$(json_escape "${file_path:t}"),\"status\":\"empty_file\"}")
@@ -770,6 +1240,7 @@ sync_mapping() {
     existing_id="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.id // empty')"
     chunk_method="$(resolve_chunk_method "${mapping_name}" "${extension}")"
     parser_config_json="$(resolve_parser_config "${mapping_name}" "${extension}")"
+    parser_config_json="$(normalize_parser_config_json "${parser_config_json}")"
     action="upload"
     if [[ -n "${existing_id}" ]]; then
       existing_run="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.run // empty')"
@@ -777,25 +1248,14 @@ sync_mapping() {
       existing_process_duration="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.process_duration // 0')"
       existing_progress="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.progress // 0')"
       existing_progress_msg="$(printf '%s' "${existing_doc_json}" | "${JQ_BIN}" -r '.progress_msg // ""')"
-      ghost_running="0"
-      if [[ "${existing_run}" == "RUNNING" && "${existing_chunk_total}" == "0" ]]; then
-        ghost_running="$(is_ghost_running_doc "${existing_process_duration}" "${existing_progress}" "${existing_progress_msg}")"
+      classification_json="$(classify_existing_doc "${manifest_sha256}" "${manifest_size}" "${local_sha256}" "${local_size}" "${existing_run}" "${existing_chunk_total}" "${existing_process_duration}" "${existing_progress}" "${existing_progress_msg}")"
+      class_action="$(printf '%s' "${classification_json}" | "${JQ_BIN}" -r '.action')"
+      replace_reason="$(printf '%s' "${classification_json}" | "${JQ_BIN}" -r '.reason')"
+      if [[ "${class_action}" == "pending" ]]; then
+        report_items+=("{\"file\":$(json_escape "${file_path}"),\"name\":$(json_escape "${remote_name}"),\"status\":\"pending_remote_running\",\"document_id\":\"${existing_id}\",\"run\":\"${existing_run}\",\"chunk_method\":\"${chunk_method}\",\"retrievable_chunk_count\":${existing_chunk_total}}")
+        continue
       fi
-      replace_reason=""
-      if [[ "${REPLACE_EXISTING}" == "1" ]]; then
-        replace_reason="replace_existing_flag"
-      elif [[ -z "${manifest_sha256}" ]]; then
-        replace_reason="bootstrap_reconcile"
-      elif [[ "${manifest_sha256}" != "${local_sha256}" || "${manifest_size}" != "${local_size}" ]]; then
-        replace_reason="local_content_changed"
-      elif [[ "${existing_run}" == "FAIL" || "${existing_run}" == "CANCEL" ]]; then
-        replace_reason="remote_parse_failed"
-      elif [[ "${ghost_running}" == "1" ]]; then
-        replace_reason="stuck_running_no_real_progress"
-      elif [[ "${existing_run}" != "RUNNING" && "${existing_chunk_total}" == "0" ]]; then
-        replace_reason="remote_empty_chunks"
-      fi
-      if [[ -n "${replace_reason}" ]]; then
+      if [[ "${class_action}" == "replace" ]]; then
         purge_doc_queue_entries "${existing_id}"
         delete_doc "${dataset_id}" "${existing_id}"
         manifest_remove "${manifest_file}" "${remote_name}"
@@ -806,11 +1266,27 @@ sync_mapping() {
         if [[ "${REPARSE_EXISTING}" == "1" ]]; then
           update_doc_profile "${dataset_id}" "${doc_id}" "${chunk_method}" "${parser_config_json}"
           parse_targets+=("${doc_id}")
+          parse_probe_by_doc_id[${doc_id}]="${remote_name}"
           action="reparse_existing"
           report_items+=("{\"file\":$(json_escape "${file_path}"),\"name\":$(json_escape "${remote_name}"),\"status\":\"${action}\",\"document_id\":\"${doc_id}\",\"chunk_method\":\"${chunk_method}\",\"retrievable_chunk_count\":${existing_chunk_total}}")
         else
+          if (( existing_readback_count < READBACK_MAX_EXISTING )); then
+            readback_json="$(readback_doc "${mapping_name}" "${profile}" "${doc_id}" "${remote_name}")"
+            existing_readback_count=$((existing_readback_count + 1))
+          else
+            readback_json="$("${JQ_BIN}" -c -n --arg document_id "${doc_id}" --argjson limit "${READBACK_MAX_EXISTING}" '{document_id:$document_id, hit_count:null, status:"skipped_by_limit", limit:$limit}')"
+          fi
           skipped_count=$((skipped_count + 1))
-          report_items+=("{\"file\":$(json_escape "${file_path}"),\"name\":$(json_escape "${remote_name}"),\"status\":\"skipped_existing\",\"document_id\":\"${doc_id}\",\"chunk_method\":\"${chunk_method}\",\"retrievable_chunk_count\":${existing_chunk_total}}")
+          report_items+=("$("${JQ_BIN}" -c -n \
+            --arg file "${file_path}" \
+            --arg name "${remote_name}" \
+            --arg document_id "${doc_id}" \
+            --arg run "${existing_run}" \
+            --arg chunk_method "${chunk_method}" \
+            --argjson retrievable_chunk_count "${existing_chunk_total}" \
+            --argjson readback "${readback_json}" \
+            '{file:$file,name:$name,status:"skipped_existing",document_id:$document_id,run:$run,chunk_method:$chunk_method,retrievable_chunk_count:$retrievable_chunk_count,readback:$readback}')"
+          )
         fi
         continue
       fi
@@ -826,6 +1302,7 @@ sync_mapping() {
     manifest_set "${manifest_file}" "${remote_name}" "${file_path}" "${local_sha256}" "${local_size}" "${doc_id}" "${chunk_method}" "synced"
     uploaded_ids+=("${doc_id}")
     parse_targets+=("${doc_id}")
+    parse_probe_by_doc_id[${doc_id}]="${remote_name}"
     uploaded_count=$((uploaded_count + 1))
     if [[ -n "${replace_reason}" ]]; then
       report_items+=("{\"file\":$(json_escape "${file_path}"),\"name\":$(json_escape "${remote_name}"),\"status\":\"${action}\",\"document_id\":\"${doc_id}\",\"chunk_method\":\"${chunk_method}\",\"replace_reason\":\"${replace_reason}\"}")
@@ -838,6 +1315,21 @@ sync_mapping() {
   if (( ${#parse_targets[@]} > 0 )); then
     parse_items=("${(@f)$(process_parse_targets "${dataset_id}" "${parse_targets[@]}")}")
   fi
+  local -a enriched_parse_items
+  local parse_json parse_doc_id parse_run parse_chunks parse_readback
+  for parse_json in "${parse_items[@]}"; do
+    [[ -n "${parse_json}" ]] || continue
+    parse_doc_id="$(printf '%s' "${parse_json}" | "${JQ_BIN}" -r '.document_id // empty')"
+    parse_run="$(printf '%s' "${parse_json}" | "${JQ_BIN}" -r '.run // empty')"
+    parse_chunks="$(printf '%s' "${parse_json}" | "${JQ_BIN}" -r '.retrievable_chunk_count // .chunk_count // 0')"
+    if [[ "${parse_run}" == "DONE" && "${parse_chunks}" -gt 0 ]]; then
+      parse_readback="$(readback_doc "${mapping_name}" "${profile}" "${parse_doc_id}" "${parse_probe_by_doc_id[${parse_doc_id}]:-}")"
+      enriched_parse_items+=("$(printf '%s' "${parse_json}" | "${JQ_BIN}" -c --argjson readback "${parse_readback}" '.readback = $readback')")
+    else
+      enriched_parse_items+=("${parse_json}")
+    fi
+  done
+  parse_items=("${enriched_parse_items[@]}")
 
   local report_file parse_file
   report_file="$(mktemp)"
@@ -869,6 +1361,15 @@ sync_mapping() {
       uploaded_count: $uploaded_count,
       skipped_existing_count: $skipped_count,
       empty_file_count: $empty_count,
+      status: (
+        if any((($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson))[]?); ((.status // "") | test("blocked|failed|pending|timeout|cancel"; "i")) or ((.status == "skipped_existing") and (((.retrievable_chunk_count // 0) <= 0) or (((.readback.status // "retrievable") != "retrievable") and ((.readback.status // "") != "skipped_by_limit"))))) then
+          "failed"
+        elif any((($parses_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson))[]?); (.run != "DONE") or (((.retrievable_chunk_count // .chunk_count // 0) <= 0)) or ((.readback.status // "retrievable") != "retrievable")) then
+          "failed"
+        else
+          "completed"
+        end
+      ),
       documents: (($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson))),
       parses: (($parses_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson)))
     }'
@@ -895,8 +1396,24 @@ fi
 
 final_report="$("${JQ_BIN}" -n \
   --arg generated_at "$(date '+%Y-%m-%dT%H:%M:%S%z')" \
+  --arg dry_run "${DRY_RUN}" \
   --rawfile results_raw "${results_file}" \
-  '{generated_at: $generated_at, results: (($results_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson)))}')"
+  '{
+    generated_at: $generated_at,
+    dry_run: ($dry_run == "1"),
+    results: (($results_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson)))
+  }
+  | .status = (
+      if ($dry_run == "1") and any(.results[]?; (.status // "") == "blocked") then
+        "blocked"
+      elif any(.results[]?; (.status // "") == "blocked" or (.status // "") == "failed") then
+        "failed"
+      elif any(.results[]?; (.status // "") == "planned") then
+        "planned"
+      else
+        "completed"
+      end
+    )')"
 
 rm -f "${results_file}"
 
@@ -905,3 +1422,17 @@ if [[ -n "${REPORT}" ]]; then
 fi
 
 printf '%s\n' "${final_report}"
+
+if [[ "${DRY_RUN}" != "1" ]]; then
+  final_status="$(printf '%s\n' "${final_report}" | "${JQ_BIN}" -r '.status // "failed"')"
+  if [[ "${final_status}" != "completed" ]]; then
+    if printf '%s\n' "${final_report}" | "${JQ_BIN}" -e 'any(.results[]?.parses[]?; (.run != "DONE") or (((.retrievable_chunk_count // .chunk_count // 0) <= 0)))' >/dev/null; then
+      echo "parse not complete or retrievable_chunk_count is zero" >&2
+    elif printf '%s\n' "${final_report}" | "${JQ_BIN}" -e 'any(.results[]?.parses[]?; ((.readback.status // "retrievable") != "retrievable")) or any(.results[]?.documents[]?; .status == "skipped_existing" and (((.readback.status // "retrievable") != "retrievable") and ((.readback.status // "") != "skipped_by_limit")))' >/dev/null; then
+      echo "retrieval readback failed" >&2
+    else
+      echo "RAGFlow sync did not reach completed status: ${final_status}" >&2
+    fi
+    exit 1
+  fi
+fi

@@ -6,6 +6,48 @@
       "dataset_id": "<YOUR_BUSINESS_REFERENCE_DATASET_ID>",
       "profile": "<YOUR_RESEARCH_REFERENCE_PROFILE>",
       "description": "Stage 2 research reference library. Put reusable business background, prior research, and internal reference materials here.",
+      "default_chunk_method": "naive",
+      "default_parser_config": {
+        "layout_recognize": "DeepDOC",
+        "chunk_token_num": 768,
+        "delimiter": "\n",
+        "auto_keywords": 0,
+        "auto_questions": 0,
+        "html4excel": false,
+        "topn_tags": 5,
+        "raptor": {"use_raptor": false},
+        "graphrag": {"use_graphrag": false},
+        "parent_child": {
+          "use_parent_child": false,
+          "children_delimiter": "\n\n"
+        }
+      },
+      "extension_profiles": {
+        "ppt": {
+          "chunk_method": "presentation",
+          "parser_config": {"raptor": {"use_raptor": false}}
+        },
+        "pptx": {
+          "chunk_method": "presentation",
+          "parser_config": {"raptor": {"use_raptor": false}}
+        },
+        "doc": {"chunk_method": "naive"},
+        "docx": {"chunk_method": "naive"},
+        "pdf": {
+          "chunk_method": "naive",
+          "parser_config": {
+            "layout_recognize": "DeepDOC",
+            "mineru_parse_method": "auto",
+            "mineru_formula_enable": true,
+            "mineru_table_enable": true,
+            "mineru_lang": "English"
+          }
+        }
+      },
+      "retrieval_defaults": {
+        "query": "business reference readback",
+        "top_k": 3
+      },
       "pdf_parser_required": "MinerU",
       "migration_note": "If this folder contains PDFs, configure the target RAGFlow dataset or ingestion pipeline with PDF parser = MinerU before syncing."
     },
@@ -14,6 +56,53 @@
       "dataset_id": "<YOUR_STYLE_REFERENCE_DATASET_ID>",
       "profile": "<YOUR_STYLE_REFERENCE_PROFILE>",
       "description": "Stage 6 style reference library. Use for final-delivery structure, wording, and style alignment.",
+      "default_chunk_method": "naive",
+      "default_parser_config": {
+        "layout_recognize": "DeepDOC",
+        "chunk_token_num": 768,
+        "delimiter": "\n",
+        "auto_keywords": 0,
+        "auto_questions": 0,
+        "html4excel": false,
+        "topn_tags": 4,
+        "raptor": {"use_raptor": false},
+        "graphrag": {"use_graphrag": false},
+        "parent_child": {
+          "use_parent_child": false,
+          "children_delimiter": "\n\n"
+        }
+      },
+      "extension_profiles": {
+        "doc": {"chunk_method": "naive"},
+        "docx": {"chunk_method": "naive"},
+        "md": {
+          "chunk_method": "naive",
+          "parser_config": {
+            "layout_recognize": "DeepDOC",
+            "chunk_token_num": 768,
+            "delimiter": "\n",
+            "auto_keywords": 0,
+            "auto_questions": 0,
+            "topn_tags": 4,
+            "raptor": {"use_raptor": false},
+            "graphrag": {"use_graphrag": false}
+          }
+        },
+        "pdf": {
+          "chunk_method": "naive",
+          "parser_config": {
+            "layout_recognize": "DeepDOC",
+            "mineru_parse_method": "auto",
+            "mineru_formula_enable": true,
+            "mineru_table_enable": true,
+            "mineru_lang": "English"
+          }
+        }
+      },
+      "retrieval_defaults": {
+        "query": "style reference readback",
+        "top_k": 3
+      },
       "pdf_parser_required": "MinerU",
       "migration_note": "If this folder contains PDFs, configure the target RAGFlow dataset or ingestion pipeline with PDF parser = MinerU before syncing."
     }

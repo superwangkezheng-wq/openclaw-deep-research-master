@@ -60,11 +60,22 @@ for the business-reference and style-reference folder fields.
 
 If you want folder sync in cloud mode, the folder path must be mounted or otherwise visible inside the OpenClaw runtime.
 
+Before a real folder sync, run a read-only plan:
+
+```bash
+zsh scripts/sync-rag-reference-folders.sh business --dry-run
+zsh scripts/sync-rag-reference-folders.sh style --dry-run
+```
+
+Review planned `upload`, `replace`, `prune`, and `skip` decisions. Do not run a real sync if the plan would replace or prune documents you did not intend to touch. `--allow-prune` is required before remote documents missing from the local folder can be deleted.
+
 ## Vector Database, MinerU, And Local Model Service
 
 RAGFlow is the vector database/retrieval layer for this project. The project calls RAGFlow; it does not embed documents by itself.
 
 MinerU is used for PDF-heavy parsing when documents are ingested into RAGFlow. If your reference folders contain PDFs, configure the RAGFlow dataset/parser pipeline with MinerU before syncing or relying on those documents.
+
+The example `ragflow_folder_mappings.example.json` includes required parser profiles: PPT/PPTX should use RAGFlow `presentation` parsing, while PDFs should carry MinerU parser options. The sync helper rejects parser fallback for these file types so a weaker model or cloud runtime cannot silently ingest critical references with the wrong parser.
 
 Embeddings and local model processing depend on your RAGFlow setup. If RAGFlow uses a local or external OpenAI-compatible service, fill in:
 
