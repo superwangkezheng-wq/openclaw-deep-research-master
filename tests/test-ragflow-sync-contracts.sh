@@ -65,7 +65,7 @@ write_mapping() {
 EOF
 }
 
-echo "1/12 wrapper passes the authoritative mapping file and dry-run flag to helper"
+echo "1/13 wrapper passes the authoritative mapping file and dry-run flag to helper"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-wrapper.XXXXXX)"
 mkdir -p "${tmp_root}/deep-research/config" "${tmp_root}/deep-research/reports" "${tmp_root}/bin"
 write_mapping "${tmp_root}/deep-research/config/ragflow_folder_mappings.json" "${tmp_root}/business"
@@ -87,13 +87,14 @@ DEEP_RESEARCH_RAGFLOW_FOLDER_MAPPING_FILE="${tmp_root}/deep-research/config/ragf
 EXPECTED_MAPPING_FILE="${tmp_root}/deep-research/config/ragflow_folder_mappings.json" \
 RAGFLOW_SYNC_SCRIPT="${fake_helper}" \
 HELPER_ARGS_LOG="${tmp_root}/helper-args.txt" \
-  zsh "${SCRIPT_ROOT}/sync-rag-reference-folders.sh" business --dry-run > "${OUT}"
+  zsh "${SCRIPT_ROOT}/sync-rag-reference-folders.sh" business --dry-run --only-file target.pdf > "${OUT}"
 jq -e '.business.dry_run == true and .business.results[0].status == "planned"' "${OUT}" >/dev/null || fail "wrapper did not return dry-run helper JSON"
 grep -q -- '--dry-run' "${tmp_root}/helper-args.txt" || fail "wrapper did not forward --dry-run"
+grep -q -- '--only-file target.pdf' "${tmp_root}/helper-args.txt" || fail "wrapper did not forward --only-file"
 [[ ! -e "${tmp_root}/deep-research/reports/kb-sync-summary.latest.json" ]] || fail "wrapper dry-run wrote latest summary"
 rm -rf "${tmp_root}"
 
-echo "2/12 wrapper rejects helper JSON with RUNNING and zero retrievable chunks"
+echo "2/13 wrapper rejects helper JSON with RUNNING and zero retrievable chunks"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-running.XXXXXX)"
 mkdir -p "${tmp_root}/deep-research/config" "${tmp_root}/deep-research/reports" "${tmp_root}/business" "${tmp_root}/bin"
 write_mapping "${tmp_root}/deep-research/config/ragflow_folder_mappings.json" "${tmp_root}/business"
@@ -109,7 +110,7 @@ fi
 grep -q "non-terminal parse" "${ERR}" || fail "wrapper did not explain RUNNING parse rejection"
 rm -rf "${tmp_root}"
 
-echo "3/12 helper dry-run blocks duplicate basenames from nested folders"
+echo "3/13 helper dry-run blocks duplicate basenames from nested folders"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-duplicate.XXXXXX)"
 folder="${tmp_root}/business"
 mkdir -p "${folder}/a" "${folder}/b" "${tmp_root}/config"
@@ -123,7 +124,7 @@ fi
 grep -q "duplicate basename" "${ERR}" || fail "duplicate basename error missing"
 rm -rf "${tmp_root}"
 
-echo "4/12 helper dry-run produces upload/replace/prune/skip plan without side effects"
+echo "4/13 helper dry-run produces upload/replace/prune/skip plan without side effects"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-plan.XXXXXX)"
 folder="${tmp_root}/business"
 state="${tmp_root}/state"
@@ -162,7 +163,42 @@ jq -e '
 jq -e '.documents["strategy.pptx"].sha256 == "old"' "${state}/business-reference.manifest.json" >/dev/null || fail "dry-run modified manifest"
 rm -rf "${tmp_root}"
 
-echo "5/12 helper rejects parser fallback for PPT/PPTX and PDF MinerU profiles"
+echo "5/13 helper dry-run can be scoped to one exact file"
+tmp_root="$(mktemp -d /tmp/dr-ragflow-only.XXXXXX)"
+folder="${tmp_root}/business"
+state="${tmp_root}/state"
+mkdir -p "${folder}" "${tmp_root}/config" "${state}"
+printf 'deck' > "${folder}/strategy.pptx"
+printf 'pdf' > "${folder}/idc.pdf"
+printf 'doc' > "${folder}/adopt.docx"
+write_mapping "${tmp_root}/config/mapping.json" "${folder}"
+cat > "${tmp_root}/docs.json" <<'EOF'
+{"data":{"docs":[
+  {"name":"strategy.pptx","id":"doc-ppt","run":"DONE","chunk_count":12,"size":4},
+  {"name":"adopt.docx","id":"doc-adopt","run":"DONE","chunk_count":8,"size":3},
+  {"name":"idc.pdf","id":"doc-idc","run":"DONE","chunk_count":0,"size":3}
+]}}
+EOF
+RAGFLOW_FOLDER_MAPPING_FILE="${tmp_root}/config/mapping.json" \
+RAGFLOW_SYNC_TEST_FIXTURES=1 \
+RAGFLOW_SYNC_DOCS_JSON_FILE="${tmp_root}/docs.json" \
+RAGFLOW_SYNC_STATE_DIR="${state}" \
+  zsh "${HELPER}" --mapping business-reference --dry-run --only-file idc.pdf > "${OUT}"
+jq -e '
+  .results[0].plan.replace_count == 1
+  and .results[0].plan.upload_count == 0
+  and .results[0].plan.prune_count == 0
+  and (.results[0].documents | length) == 1
+  and .results[0].documents[0].name == "idc.pdf"
+  and .results[0].documents[0].status == "would_replace"
+' "${OUT}" >/dev/null || fail "--only-file dry-run did not isolate idc.pdf"
+if RAGFLOW_FOLDER_MAPPING_FILE="${tmp_root}/config/mapping.json" RAGFLOW_SYNC_TEST_FIXTURES=1 RAGFLOW_SYNC_DOCS_JSON_FILE="${tmp_root}/docs.json" zsh "${HELPER}" --mapping business-reference --dry-run --only-file missing.pdf > "${OUT}" 2> "${ERR}"; then
+  fail "helper accepted --only-file with no match"
+fi
+grep -q -- "--only-file did not match" "${ERR}" || fail "--only-file no-match error missing"
+rm -rf "${tmp_root}"
+
+echo "6/13 helper rejects parser fallback for PPT/PPTX and PDF MinerU profiles"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-parser.XXXXXX)"
 folder="${tmp_root}/business"
 mkdir -p "${folder}" "${tmp_root}/config"
@@ -178,7 +214,7 @@ fi
 grep -q "missing extension_profiles" "${ERR}" || fail "parser profile error missing"
 rm -rf "${tmp_root}"
 
-echo "6/12 helper reports TIMEOUT instead of accepting permanent RUNNING"
+echo "7/13 helper reports TIMEOUT instead of accepting permanent RUNNING"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-timeout.XXXXXX)"
 folder="${tmp_root}/business"
 mkdir -p "${folder}" "${tmp_root}/config" "${tmp_root}/bin"
@@ -221,7 +257,7 @@ fi
 grep -q "parse not complete" "${ERR}" || fail "permanent RUNNING rejection missing"
 rm -rf "${tmp_root}"
 
-echo "7/12 helper requires document-id limited retrieval readback for successful parses"
+echo "8/13 helper requires document-id limited retrieval readback for successful parses"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-readback.XXXXXX)"
 folder="${tmp_root}/business"
 mkdir -p "${folder}" "${tmp_root}/config" "${tmp_root}/bin"
@@ -276,7 +312,7 @@ RAGFLOW_SYNC_READBACK_JSON_FILE="${tmp_root}/readback.json" \
 jq -e '.status == "completed" and .results[0].status == "completed" and .results[0].parses[0].readback.status == "retrievable"' "${OUT}" >/dev/null || fail "helper did not record successful readback"
 rm -rf "${tmp_root}"
 
-echo "8/12 wrapper rejects malformed helper JSON"
+echo "9/13 wrapper rejects malformed helper JSON"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-bad-json.XXXXXX)"
 mkdir -p "${tmp_root}/deep-research/config" "${tmp_root}/deep-research/reports" "${tmp_root}/business" "${tmp_root}/bin"
 write_mapping "${tmp_root}/deep-research/config/ragflow_folder_mappings.json" "${tmp_root}/business"
@@ -292,7 +328,7 @@ fi
 grep -q "invalid JSON" "${ERR}" || fail "bad JSON rejection missing"
 rm -rf "${tmp_root}"
 
-echo "9/12 helper treats RAGFlow data.total retrieval response as readback hits"
+echo "10/13 helper treats RAGFlow data.total retrieval response as readback hits"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-total.XXXXXX)"
 folder="${tmp_root}/business"
 state="${tmp_root}/state"
@@ -334,7 +370,7 @@ RAGFLOW_SYNC_STATE_DIR="${state}" \
 jq -e '.status == "completed" and .results[0].documents[0].readback.hit_count == 2 and .results[0].documents[0].readback.status == "retrievable"' "${OUT}" >/dev/null || fail "data.total readback was not counted"
 rm -rf "${tmp_root}"
 
-echo "10/12 wrapper and helper reject --limit without a value"
+echo "11/13 wrapper and helper reject --limit/--only-file without a value"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-limit.XXXXXX)"
 mkdir -p "${tmp_root}/deep-research/config" "${tmp_root}/deep-research/reports" "${tmp_root}/business"
 write_mapping "${tmp_root}/deep-research/config/ragflow_folder_mappings.json" "${tmp_root}/business"
@@ -346,9 +382,17 @@ if RAGFLOW_FOLDER_MAPPING_FILE="${tmp_root}/deep-research/config/ragflow_folder_
   fail "helper accepted --limit without value"
 fi
 grep -q -- "--limit requires" "${ERR}" || fail "helper --limit error missing"
+if OPENCLAW_WORKSPACE="${tmp_root}" zsh "${SCRIPT_ROOT}/sync-rag-reference-folders.sh" business --only-file > "${OUT}" 2> "${ERR}"; then
+  fail "wrapper accepted --only-file without value"
+fi
+grep -q -- "--only-file requires" "${ERR}" || fail "wrapper --only-file error missing"
+if RAGFLOW_FOLDER_MAPPING_FILE="${tmp_root}/deep-research/config/ragflow_folder_mappings.json" zsh "${HELPER}" --mapping business-reference --dry-run --only-file > "${OUT}" 2> "${ERR}"; then
+  fail "helper accepted --only-file without value"
+fi
+grep -q -- "--only-file requires" "${ERR}" || fail "helper --only-file error missing"
 rm -rf "${tmp_root}"
 
-echo "11/12 live mapping declares business/style parser and readback profiles"
+echo "12/13 live mapping declares business/style parser and readback profiles"
 jq -e '
   .mappings["business-reference"].extension_profiles.pptx.chunk_method == "presentation"
   and .mappings["business-reference"].extension_profiles.ppt.chunk_method == "presentation"
@@ -358,7 +402,7 @@ jq -e '
   and (.mappings["style-reference"].retrieval_defaults.query | length > 0)
 ' /Users/lenovo/.openclaw/workspace-deep-research-master/deep-research/config/ragflow_folder_mappings.json >/dev/null || fail "live business mapping parser profiles missing"
 
-echo "12/12 source example mapping declares the same parser/readback contract"
+echo "13/13 source example mapping declares the same parser/readback contract"
 jq -e '
   .mappings["business-reference"].extension_profiles.pptx.chunk_method == "presentation"
   and .mappings["business-reference"].extension_profiles.ppt.chunk_method == "presentation"

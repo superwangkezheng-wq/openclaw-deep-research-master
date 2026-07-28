@@ -6,8 +6,8 @@ unsetopt xtrace 2>/dev/null || true
 usage() {
   cat <<'EOF' >&2
 Usage:
-  sync_folder_to_ragflow.sh --mapping <business-reference|style-reference> [--dry-run] [--allow-prune] [--replace-existing] [--limit <n>] [--report <path>]
-  sync_folder_to_ragflow.sh --all [--dry-run] [--allow-prune] [--replace-existing] [--limit <n>] [--report <path>]
+  sync_folder_to_ragflow.sh --mapping <business-reference|style-reference> [--dry-run] [--allow-prune] [--replace-existing] [--limit <n>] [--only-file <path|basename|remote-name>] [--report <path>]
+  sync_folder_to_ragflow.sh --all [--dry-run] [--allow-prune] [--replace-existing] [--limit <n>] [--only-file <path|basename|remote-name>] [--report <path>]
 
 Behavior:
   1. Read folder/dataset mapping from folder_mappings.json
@@ -47,6 +47,7 @@ REPARSE_EXISTING="0"
 DRY_RUN="0"
 ALLOW_PRUNE="0"
 LIMIT="0"
+ONLY_FILE=""
 REPORT=""
 
 while [[ $# -gt 0 ]]; do
@@ -82,6 +83,15 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       LIMIT="${2:-0}"
+      shift 2
+      ;;
+    --only-file)
+      if (( $# < 2 )) || [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+        echo "--only-file requires a path, basename, or remote name" >&2
+        usage
+        exit 1
+      fi
+      ONLY_FILE="$2"
       shift 2
       ;;
     --report)
@@ -183,6 +193,30 @@ paths.sort(key=lambda value: (os.path.getsize(value), value.lower()))
 for path in paths:
     print(path)
 PY
+}
+
+filter_only_file() {
+  local mapping_name="$1"
+  local target="$2"
+  shift 2
+  local -a matches
+  local file_path remote_name
+  for file_path in "$@"; do
+    remote_name="$(resolve_remote_name "${mapping_name}" "${file_path:t}")"
+    if [[ "${file_path}" == "${target}" || "${file_path:t}" == "${target}" || "${remote_name}" == "${target}" ]]; then
+      matches+=("${file_path}")
+    fi
+  done
+  if (( ${#matches[@]} == 0 )); then
+    echo "--only-file did not match any supported file for ${mapping_name}: ${target}" >&2
+    return 1
+  fi
+  if (( ${#matches[@]} > 1 )); then
+    echo "--only-file matched multiple files for ${mapping_name}; use an absolute path: ${target}" >&2
+    printf '%s\n' "${matches[@]}" >&2
+    return 1
+  fi
+  printf '%s\n' "${matches[1]}"
 }
 
 manifest_path() {
@@ -1047,7 +1081,11 @@ emit_dry_run_plan() {
   done
 
   local -a prune_items
-  prune_items=("${(@f)$(remote_prune_items "${docs_json}" "${desired_names_file}")}")
+  if [[ -n "${ONLY_FILE}" ]]; then
+    prune_items=()
+  else
+    prune_items=("${(@f)$(remote_prune_items "${docs_json}" "${desired_names_file}")}")
+  fi
   if (( ${#prune_items[@]} == 1 )) && [[ -z "${prune_items[1]}" ]]; then
     prune_items=()
   fi
@@ -1132,6 +1170,9 @@ sync_mapping() {
   if (( ${#files[@]} == 1 )) && [[ -z "${files[1]}" ]]; then
     files=()
   fi
+  if [[ -n "${ONLY_FILE}" ]]; then
+    files=("${(@f)$(filter_only_file "${mapping_name}" "${ONLY_FILE}" "${files[@]}")}")
+  fi
   if [[ "${LIMIT}" != "0" ]]; then
     files=("${(@)files[1,${LIMIT}]}")
   fi
@@ -1170,7 +1211,9 @@ sync_mapping() {
   fi
 
   local -a pruned_items
-  if [[ "${ALLOW_PRUNE}" != "1" ]]; then
+  if [[ -n "${ONLY_FILE}" ]]; then
+    pruned_items=()
+  elif [[ "${ALLOW_PRUNE}" != "1" ]]; then
     pruned_items=("${(@f)$(remote_prune_items "${docs_json}" "${desired_names_file}")}")
     if (( ${#pruned_items[@]} == 1 )) && [[ -z "${pruned_items[1]}" ]]; then
       pruned_items=()

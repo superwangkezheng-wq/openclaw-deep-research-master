@@ -69,6 +69,14 @@ zsh scripts/sync-rag-reference-folders.sh style --dry-run
 
 Review planned `upload`, `replace`, `prune`, and `skip` decisions. Do not run a real sync if the plan would replace or prune documents you did not intend to touch. `--allow-prune` is required before remote documents missing from the local folder can be deleted.
 
+When repairing one unhealthy reference, use `--only-file` with an exact path, basename, or remote name:
+
+```bash
+zsh scripts/sync-rag-reference-folders.sh business --dry-run --only-file "/absolute/path/to/file.pdf"
+```
+
+Scoped sync does not plan or execute off-scope prune, which makes it safer for cloud or weaker-model operators who are following a remediation instruction.
+
 ## Vector Database, MinerU, And Local Model Service
 
 RAGFlow is the vector database/retrieval layer for this project. The project calls RAGFlow; it does not embed documents by itself.

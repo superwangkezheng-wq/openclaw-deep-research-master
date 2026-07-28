@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF' >&2
 Usage:
-  sync-rag-reference-folders.sh [all|business|style] [--dry-run] [--allow-prune] [--replace-existing] [--reparse-existing] [--limit <n>]
+  sync-rag-reference-folders.sh [all|business|style] [--dry-run] [--allow-prune] [--replace-existing] [--reparse-existing] [--limit <n>] [--only-file <path|basename|remote-name>]
 
 Behavior:
   - all: sync both business-reference and style-reference
@@ -37,6 +37,15 @@ while (( $# > 0 )); do
     --limit)
       if (( $# < 2 )) || [[ "${2:-}" == --* ]]; then
         echo "--limit requires a numeric value" >&2
+        usage
+        exit 1
+      fi
+      SYNC_ARGS+=("$1" "$2")
+      shift 2
+      ;;
+    --only-file)
+      if (( $# < 2 )) || [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+        echo "--only-file requires a path, basename, or remote name" >&2
         usage
         exit 1
       fi
