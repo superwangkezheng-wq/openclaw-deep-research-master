@@ -72,6 +72,18 @@ BUSINESS_REPORT="${REPORT_ROOT}/business-sync-report.latest.json"
 STYLE_REPORT="${REPORT_ROOT}/style-sync-report.latest.json"
 SUMMARY_JSON="${REPORT_ROOT}/kb-sync-summary.latest.json"
 NOW="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+SYNC_CONTRACT_JQ_DEFS='
+  def bad_parse:
+    (.run // "") != "DONE"
+    or ((.retrievable_chunk_count // .chunk_count // 0) <= 0)
+    or ((.readback.status // "retrievable") != "retrievable");
+  def bad_doc:
+    ((.status // "") | test("blocked|failed|pending|timeout|cancel"; "i"))
+    or (((.status // "") == "skipped_existing") and (
+      ((.retrievable_chunk_count // 0) <= 0)
+      or (((.readback.status // "retrievable") != "retrievable") and ((.readback.status // "") != "skipped_by_limit"))
+    ));
+'
 
 mkdir -p "${REPORT_ROOT}"
 
@@ -94,17 +106,7 @@ validate_sync_report() {
   local report_json="$2"
   local validation
 
-  validation="$(printf '%s\n' "${report_json}" | jq -r '
-    def bad_parse:
-      (.run // "") != "DONE"
-      or ((.retrievable_chunk_count // .chunk_count // 0) <= 0)
-      or ((.readback.status // "retrievable") != "retrievable");
-    def bad_doc:
-      ((.status // "") | test("blocked|failed|pending|timeout|cancel"; "i"))
-      or (((.status // "") == "skipped_existing") and (
-        ((.retrievable_chunk_count // 0) <= 0)
-        or (((.readback.status // "retrievable") != "retrievable") and ((.readback.status // "") != "skipped_by_limit"))
-      ));
+  validation="$(printf '%s\n' "${report_json}" | jq -r "${SYNC_CONTRACT_JQ_DEFS}"'
     if ((.results // []) | type) != "array" then
       "missing results array"
     elif any(.results[]?; (.status // "") == "blocked" or (.status // "") == "failed") then
@@ -173,6 +175,8 @@ run_sync_json() {
   local mapping="$1"
   local report_path="$2"
   local output=""
+  local stderr_file
+  local helper_status=0
 
   if [[ -f "${CONFIG_FILE}" ]]; then
     if output="$(remote_only_result "${mapping}" "${report_path}")"; then
@@ -181,17 +185,55 @@ run_sync_json() {
     fi
   fi
 
-  if ! output="$(run_sync "${mapping}" "${report_path}" 2>&1)"; then
-    printf '%s\n' "${output}" >&2
-    return 1
+  stderr_file="$(mktemp)"
+  if [[ "${DRY_RUN_MODE}" != "1" ]]; then
+    rm -f "${report_path}"
   fi
+  if output="$(run_sync "${mapping}" "${report_path}" 2>"${stderr_file}")"; then
+    helper_status=0
+  else
+    helper_status="$?"
+    cat "${stderr_file}" >&2
+    if [[ -s "${report_path}" ]] && jq -e . "${report_path}" >/dev/null 2>&1; then
+      output="$(cat "${report_path}")"
+    else
+      output="$(jq -n -c \
+        --arg generated_at "${NOW}" \
+        --arg mapping "${mapping}" \
+        --arg error "$(head -c 1000 "${stderr_file}" 2>/dev/null)" \
+        --arg output "$(printf '%s' "${output}" | head -c 1000)" \
+        --argjson helper_exit_status "${helper_status}" \
+        --argjson dry_run "$([[ "${DRY_RUN_MODE}" == "1" ]] && printf true || printf false)" \
+        '{
+          generated_at: $generated_at,
+          dry_run: $dry_run,
+          status: "failed",
+          results: [{
+            mapping: $mapping,
+            status: "failed",
+            helper_exit_status: $helper_exit_status,
+            documents: [{
+              status: "sync_script_failed",
+              error: $error,
+              output: $output
+            }],
+            parses: []
+          }]
+        }')"
+    fi
+  fi
+  rm -f "${stderr_file}"
+
   if ! printf '%s\n' "${output}" | jq -e . >/dev/null 2>&1; then
     echo "RAGFlow sync script returned invalid JSON for mapping ${mapping}" >&2
     printf '%s\n' "${output}" >&2
     return 1
   fi
-  validate_sync_report "${mapping}" "${output}" || return 1
+  validate_sync_report "${mapping}" "${output}" || true
   printf '%s\n' "${output}"
+  if (( helper_status != 0 )) && [[ "${DRY_RUN_MODE}" == "1" ]]; then
+    return "${helper_status}"
+  fi
 }
 
 business_result='null'
@@ -226,11 +268,26 @@ summary_payload="$(jq -n \
     dry_run: (($business.dry_run // $style.dry_run // false) == true),
     business: $business,
     style: $style
-  }')"
+	  }')"
+
+summary_failed="0"
+if printf '%s\n' "${summary_payload}" | jq -e "${SYNC_CONTRACT_JQ_DEFS}"'
+  any([.business, .style][]?; . != null and (
+    ((.status // "") == "blocked" or (.status // "") == "failed")
+    or any(.results[]?; (.status // "") == "blocked" or (.status // "") == "failed")
+    or any(.results[]?.parses[]?; bad_parse)
+    or any(.results[]?.documents[]?; bad_doc)
+  ))
+' >/dev/null; then
+  summary_failed="1"
+fi
 
 if [[ "${DRY_RUN_MODE}" == "1" ]]; then
   printf '%s\n' "${summary_payload}"
 else
   printf '%s\n' "${summary_payload}" > "${SUMMARY_JSON}"
   cat "${SUMMARY_JSON}"
+  if [[ "${summary_failed}" == "1" ]]; then
+    exit 1
+  fi
 fi

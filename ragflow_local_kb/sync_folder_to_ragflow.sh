@@ -398,6 +398,67 @@ normalize_parser_config_json() {
   fi
 }
 
+extract_poll_snapshot() {
+  local doc_id="$1"
+  local raw_response
+  raw_response="$(cat)"
+  POLL_RESPONSE="${raw_response}" "${PYTHON_BIN}" - "${doc_id}" <<'PY'
+import json
+import math
+import os
+import sys
+
+doc_id = sys.argv[1]
+raw = os.environ.get("POLL_RESPONSE", "")
+
+def number(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return 0
+    if not math.isfinite(value):
+        return 0
+    return int(value) if value.is_integer() else value
+
+def invalid_response(reason):
+    print(json.dumps({
+        "document_id": doc_id,
+        "run": "INVALID_RESPONSE",
+        "chunk_count": 0,
+        "retrievable_chunk_count": 0,
+        "token_count": 0,
+        "progress": 0,
+        "error": reason,
+    }, ensure_ascii=False))
+    raise SystemExit(0)
+
+try:
+    payload = json.loads(raw)
+except json.JSONDecodeError as exc:
+    invalid_response(f"invalid_json:{exc.msg}")
+
+if not isinstance(payload, dict):
+    invalid_response("invalid_payload:expected_object")
+data = payload.get("data")
+if not isinstance(data, dict):
+    invalid_response("invalid_payload:expected_object_data")
+docs = data.get("docs") or []
+if not isinstance(docs, list):
+    invalid_response("invalid_payload:expected_docs_array")
+doc = docs[0] if docs and isinstance(docs[0], dict) else {}
+run = str(doc.get("run") or "MISSING")
+chunk_count = number(doc.get("chunk_count", 0))
+print(json.dumps({
+    "document_id": doc_id,
+    "run": run,
+    "chunk_count": chunk_count,
+    "retrievable_chunk_count": chunk_count,
+    "token_count": number(doc.get("token_count", 0)),
+    "progress": number(doc.get("progress", 0)),
+}, ensure_ascii=False))
+PY
+}
+
 resolve_dataset_parser_config() {
   local mapping_name="$1"
   "${JQ_BIN}" -c --arg name "${mapping_name}" '(.mappings[$name].default_parser_config // {}) | del(.parent_child)' "${CONFIG_FILE}"
@@ -487,31 +548,27 @@ poll_doc() {
   local doc_id="$2"
   local attempts=0
   local max_attempts="${POLL_MAX_ATTEMPTS}"
+  local last_snapshot
+  last_snapshot="$("${JQ_BIN}" -c -n --arg document_id "${doc_id}" '{document_id:$document_id, run:"TIMEOUT", accepted:false, chunk_count:0, retrievable_chunk_count:0, token_count:0, progress:0}')"
   while (( attempts < max_attempts )); do
     local response
-    response="$(api_request GET "/api/v1/datasets/${dataset_id}/documents?id=${doc_id}&page_size=20" | "${PYTHON_BIN}" -c 'import sys; text=sys.stdin.read(); start=text.find("{"); end=text.rfind("}"); print(text[start:end+1] if start != -1 and end != -1 and end >= start else text)')"
-    local run_state chunk_count token_count progress
-    run_state="$(printf '%s' "${response}" | "${JQ_BIN}" -r '.data.docs[0].run // ""')"
-    chunk_count="$(printf '%s' "${response}" | "${JQ_BIN}" -r '.data.docs[0].chunk_count // 0')"
-    token_count="$(printf '%s' "${response}" | "${JQ_BIN}" -r '.data.docs[0].token_count // 0')"
-    progress="$(printf '%s' "${response}" | "${JQ_BIN}" -r '.data.docs[0].progress // 0')"
+    if ! response="$(api_request GET "/api/v1/datasets/${dataset_id}/documents?id=${doc_id}&page_size=20" | "${PYTHON_BIN}" -c 'import sys; text=sys.stdin.read(); start=text.find("{"); end=text.rfind("}"); print(text[start:end+1] if start != -1 and end != -1 and end >= start else text)')"; then
+      last_snapshot="$("${JQ_BIN}" -c -n --arg document_id "${doc_id}" '{document_id:$document_id, run:"TIMEOUT", accepted:false, chunk_count:0, retrievable_chunk_count:0, token_count:0, progress:0, error:"poll_request_failed"}')"
+      sleep "${POLL_INTERVAL_SECONDS}"
+      attempts=$((attempts + 1))
+      continue
+    fi
+    local run_state
+    last_snapshot="$(printf '%s' "${response}" | extract_poll_snapshot "${doc_id}")"
+    run_state="$(printf '%s' "${last_snapshot}" | "${JQ_BIN}" -r '.run // ""')"
     if [[ "${run_state}" == "DONE" || "${run_state}" == "FAIL" || "${run_state}" == "CANCEL" ]]; then
-      "${JQ_BIN}" -c -n \
-        --arg document_id "${doc_id}" \
-        --arg run "${run_state}" \
-        --argjson chunk_count "${chunk_count}" \
-        --argjson retrievable_chunk_count "${chunk_count}" \
-        --argjson token_count "${token_count}" \
-        --argjson progress "${progress}" \
-        '{document_id:$document_id, run:$run, chunk_count:$chunk_count, retrievable_chunk_count:$retrievable_chunk_count, token_count:$token_count, progress:$progress}'
+      printf '%s\n' "${last_snapshot}"
       return 0
     fi
     sleep "${POLL_INTERVAL_SECONDS}"
     attempts=$((attempts + 1))
   done
-  "${JQ_BIN}" -c -n \
-    --arg document_id "${doc_id}" \
-    '{document_id:$document_id, run:"TIMEOUT", accepted:false, chunk_count:0, retrievable_chunk_count:0, token_count:0, progress:0}'
+  printf '%s\n' "${last_snapshot}" | "${JQ_BIN}" -c '.run = "TIMEOUT" | .accepted = false'
 }
 
 readback_doc() {
@@ -915,7 +972,7 @@ validate_parser_profiles_for_files() {
         fi
         ;;
       pdf)
-        if ! printf '%s' "${parser_config_json}" | "${JQ_BIN}" -e '.mineru_formula_enable == true and .mineru_table_enable == true and ((.mineru_parse_method // "") | length > 0)' >/dev/null; then
+        if ! printf '%s' "${parser_config_json}" | "${JQ_BIN}" -e '.layout_recognize == "MinerU" and .mineru_formula_enable == true and .mineru_table_enable == true and ((.mineru_parse_method // "") | length > 0)' >/dev/null; then
           echo "missing extension_profiles pdf.parser_config MinerU settings for ${mapping_name}" >&2
           return 1
         fi
@@ -1181,6 +1238,11 @@ sync_mapping() {
   local -a report_items
   local -a parse_targets
   typeset -A parse_probe_by_doc_id
+  typeset -A parse_file_by_doc_id
+  typeset -A parse_sha_by_doc_id
+  typeset -A parse_size_by_doc_id
+  typeset -A parse_chunk_method_by_doc_id
+  typeset -A parse_remote_name_by_doc_id
   local desired_names_file
   local uploaded_count=0
   local skipped_count=0
@@ -1310,6 +1372,12 @@ sync_mapping() {
           update_doc_profile "${dataset_id}" "${doc_id}" "${chunk_method}" "${parser_config_json}"
           parse_targets+=("${doc_id}")
           parse_probe_by_doc_id[${doc_id}]="${remote_name}"
+          parse_file_by_doc_id[${doc_id}]="${file_path}"
+          parse_sha_by_doc_id[${doc_id}]="${local_sha256}"
+          parse_size_by_doc_id[${doc_id}]="${local_size}"
+          parse_chunk_method_by_doc_id[${doc_id}]="${chunk_method}"
+          parse_remote_name_by_doc_id[${doc_id}]="${remote_name}"
+          manifest_set "${manifest_file}" "${remote_name}" "${file_path}" "${local_sha256}" "${local_size}" "${doc_id}" "${chunk_method}" "pending_parse"
           action="reparse_existing"
           report_items+=("{\"file\":$(json_escape "${file_path}"),\"name\":$(json_escape "${remote_name}"),\"status\":\"${action}\",\"document_id\":\"${doc_id}\",\"chunk_method\":\"${chunk_method}\",\"retrievable_chunk_count\":${existing_chunk_total}}")
         else
@@ -1342,10 +1410,15 @@ sync_mapping() {
       continue
     fi
     update_doc_profile "${dataset_id}" "${doc_id}" "${chunk_method}" "${parser_config_json}"
-    manifest_set "${manifest_file}" "${remote_name}" "${file_path}" "${local_sha256}" "${local_size}" "${doc_id}" "${chunk_method}" "synced"
+    manifest_set "${manifest_file}" "${remote_name}" "${file_path}" "${local_sha256}" "${local_size}" "${doc_id}" "${chunk_method}" "pending_parse"
     uploaded_ids+=("${doc_id}")
     parse_targets+=("${doc_id}")
     parse_probe_by_doc_id[${doc_id}]="${remote_name}"
+    parse_file_by_doc_id[${doc_id}]="${file_path}"
+    parse_sha_by_doc_id[${doc_id}]="${local_sha256}"
+    parse_size_by_doc_id[${doc_id}]="${local_size}"
+    parse_chunk_method_by_doc_id[${doc_id}]="${chunk_method}"
+    parse_remote_name_by_doc_id[${doc_id}]="${remote_name}"
     uploaded_count=$((uploaded_count + 1))
     if [[ -n "${replace_reason}" ]]; then
       report_items+=("{\"file\":$(json_escape "${file_path}"),\"name\":$(json_escape "${remote_name}"),\"status\":\"${action}\",\"document_id\":\"${doc_id}\",\"chunk_method\":\"${chunk_method}\",\"replace_reason\":\"${replace_reason}\"}")
@@ -1368,6 +1441,17 @@ sync_mapping() {
     if [[ "${parse_run}" == "DONE" && "${parse_chunks}" -gt 0 ]]; then
       parse_readback="$(readback_doc "${mapping_name}" "${profile}" "${parse_doc_id}" "${parse_probe_by_doc_id[${parse_doc_id}]:-}")"
       enriched_parse_items+=("$(printf '%s' "${parse_json}" | "${JQ_BIN}" -c --argjson readback "${parse_readback}" '.readback = $readback')")
+      if [[ "$(printf '%s' "${parse_readback}" | "${JQ_BIN}" -r '.status // empty')" == "retrievable" ]]; then
+        manifest_set \
+          "${manifest_file}" \
+          "${parse_remote_name_by_doc_id[${parse_doc_id}]}" \
+          "${parse_file_by_doc_id[${parse_doc_id}]}" \
+          "${parse_sha_by_doc_id[${parse_doc_id}]}" \
+          "${parse_size_by_doc_id[${parse_doc_id}]}" \
+          "${parse_doc_id}" \
+          "${parse_chunk_method_by_doc_id[${parse_doc_id}]}" \
+          "synced"
+      fi
     else
       enriched_parse_items+=("${parse_json}")
     fi

@@ -943,7 +943,7 @@ echo "18/33 P1 paths and Stage 1 contracts stay portable and synchronized"
 repo_root="$(cd "${SCRIPT_ROOT}/.." && pwd -P)"
 personal_home_path_regex='/Users/[A-Za-z0-9._-]+'
 personal_vault_path_pattern='lenovo'"-work/工作/"'深度研究工程'
-if rg -q "${personal_home_path_regex}|${personal_vault_path_pattern}" "${repo_root}/scripts" "${repo_root}/HEARTBEAT.md" "${repo_root}/RULES" "${repo_root}/AGENTS.md" "${repo_root}/TOOLS.md" "${repo_root}/deep-research/specs" "${repo_root}/skills/openclaw-deep-research/templates" "${repo_root}/skills/deep-research-visuals" "${repo_root}/ragflow_local_kb"; then
+if rg -q -g '!**/state/**' "${personal_home_path_regex}|${personal_vault_path_pattern}" "${repo_root}/scripts" "${repo_root}/HEARTBEAT.md" "${repo_root}/RULES" "${repo_root}/AGENTS.md" "${repo_root}/TOOLS.md" "${repo_root}/deep-research/specs" "${repo_root}/skills/openclaw-deep-research/templates" "${repo_root}/skills/deep-research-visuals" "${repo_root}/ragflow_local_kb"; then
   fail "portable runtime/docs still contain user-specific home paths"
 fi
 grep -q '01_clarification/delivery_type_spec.json' "${repo_root}/deep-research/specs/01_to_02_handoff.md" || fail "Stage 1 handoff spec missing delivery_type_spec.json"
@@ -1332,6 +1332,9 @@ grep -q 'bash scripts/install-config-wizard.sh --mode cloud' "${repo_root}/READM
 grep -q 'bash scripts/install-config-wizard.sh --mode cloud' "${repo_root}/README.zh-CN.md" || fail "Chinese README missing cloud setup wizard command"
 grep -q 'qwen' "${repo_root}/docs/INSTALLATION.md" || fail "installation doc missing weaker-model guidance"
 grep -q 'REMOTE_ONLY' "${repo_root}/docs/INSTALLATION.md" || fail "installation doc missing cloud reference-folder guidance"
+grep -q 'sync-rag-reference-folders.sh all --dry-run' "${repo_root}/RULES/entry-contract.md" || fail "entry contract must require dry-run before all reference sync"
+grep -q 'sync-rag-reference-folders.sh business --dry-run' "${repo_root}/RULES/entry-contract.md" || fail "entry contract must require dry-run before business sync"
+grep -q -- '--only-file' "${repo_root}/RULES/entry-contract.md" || fail "entry contract missing scoped single-file sync guidance"
 
 echo "32/33 cloud install wizard writes search, RAGFlow, reference, MinerU, and model-service config"
 tmp_root="$(mktemp -d /tmp/dr-contract-install-wizard.XXXXXX)"

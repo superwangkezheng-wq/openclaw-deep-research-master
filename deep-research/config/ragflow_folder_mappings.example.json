@@ -15,8 +15,12 @@
         "auto_questions": 0,
         "html4excel": false,
         "topn_tags": 5,
-        "raptor": {"use_raptor": false},
-        "graphrag": {"use_graphrag": false},
+        "raptor": {
+          "use_raptor": false
+        },
+        "graphrag": {
+          "use_graphrag": false
+        },
         "parent_child": {
           "use_parent_child": false,
           "children_delimiter": "\n\n"
@@ -25,18 +29,30 @@
       "extension_profiles": {
         "ppt": {
           "chunk_method": "presentation",
-          "parser_config": {"raptor": {"use_raptor": false}}
+          "parser_config": {
+            "raptor": {
+              "use_raptor": false
+            }
+          }
         },
         "pptx": {
           "chunk_method": "presentation",
-          "parser_config": {"raptor": {"use_raptor": false}}
+          "parser_config": {
+            "raptor": {
+              "use_raptor": false
+            }
+          }
         },
-        "doc": {"chunk_method": "naive"},
-        "docx": {"chunk_method": "naive"},
+        "doc": {
+          "chunk_method": "naive"
+        },
+        "docx": {
+          "chunk_method": "naive"
+        },
         "pdf": {
           "chunk_method": "naive",
           "parser_config": {
-            "layout_recognize": "DeepDOC",
+            "layout_recognize": "MinerU",
             "mineru_parse_method": "auto",
             "mineru_formula_enable": true,
             "mineru_table_enable": true,
@@ -65,16 +81,24 @@
         "auto_questions": 0,
         "html4excel": false,
         "topn_tags": 4,
-        "raptor": {"use_raptor": false},
-        "graphrag": {"use_graphrag": false},
+        "raptor": {
+          "use_raptor": false
+        },
+        "graphrag": {
+          "use_graphrag": false
+        },
         "parent_child": {
           "use_parent_child": false,
           "children_delimiter": "\n\n"
         }
       },
       "extension_profiles": {
-        "doc": {"chunk_method": "naive"},
-        "docx": {"chunk_method": "naive"},
+        "doc": {
+          "chunk_method": "naive"
+        },
+        "docx": {
+          "chunk_method": "naive"
+        },
         "md": {
           "chunk_method": "naive",
           "parser_config": {
@@ -84,14 +108,18 @@
             "auto_keywords": 0,
             "auto_questions": 0,
             "topn_tags": 4,
-            "raptor": {"use_raptor": false},
-            "graphrag": {"use_graphrag": false}
+            "raptor": {
+              "use_raptor": false
+            },
+            "graphrag": {
+              "use_graphrag": false
+            }
           }
         },
         "pdf": {
           "chunk_method": "naive",
           "parser_config": {
-            "layout_recognize": "DeepDOC",
+            "layout_recognize": "MinerU",
             "mineru_parse_method": "auto",
             "mineru_formula_enable": true,
             "mineru_table_enable": true,

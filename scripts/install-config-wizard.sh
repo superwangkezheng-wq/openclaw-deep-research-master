@@ -231,6 +231,36 @@ jq -n \
         profile: $business_profile,
         description: "Stage 2 research reference library. Use REMOTE_ONLY when documents are already uploaded to RAGFlow and the cloud runtime cannot see a local folder.",
         sync_mode: (if $business_folder == "REMOTE_ONLY" then "remote_only" else "runtime_visible_folder" end),
+        default_chunk_method: "naive",
+        default_parser_config: {
+          layout_recognize: "DeepDOC",
+          chunk_token_num: 768,
+          delimiter: "\n",
+          auto_keywords: 0,
+          auto_questions: 0,
+          html4excel: false,
+          topn_tags: 5,
+          raptor: {use_raptor: false},
+          graphrag: {use_graphrag: false},
+          parent_child: {use_parent_child: false, children_delimiter: "\n\n"}
+        },
+        extension_profiles: {
+          ppt: {chunk_method: "presentation", parser_config: {raptor: {use_raptor: false}}},
+          pptx: {chunk_method: "presentation", parser_config: {raptor: {use_raptor: false}}},
+          doc: {chunk_method: "naive"},
+          docx: {chunk_method: "naive"},
+          pdf: {
+            chunk_method: "naive",
+            parser_config: {
+              layout_recognize: "MinerU",
+              mineru_parse_method: "auto",
+              mineru_formula_enable: true,
+              mineru_table_enable: true,
+              mineru_lang: "English"
+            }
+          }
+        },
+        retrieval_defaults: {query: "business reference readback", top_k: 3},
         pdf_parser_required: "MinerU",
         migration_note: "If this folder contains PDFs, configure the target RAGFlow dataset or ingestion pipeline with PDF parser = MinerU before syncing."
       },
@@ -240,6 +270,47 @@ jq -n \
         profile: $style_profile,
         description: "Stage 6 style reference library. Use REMOTE_ONLY when documents are already uploaded to RAGFlow and the cloud runtime cannot see a local folder.",
         sync_mode: (if $style_folder == "REMOTE_ONLY" then "remote_only" else "runtime_visible_folder" end),
+        default_chunk_method: "naive",
+        default_parser_config: {
+          layout_recognize: "DeepDOC",
+          chunk_token_num: 768,
+          delimiter: "\n",
+          auto_keywords: 0,
+          auto_questions: 0,
+          html4excel: false,
+          topn_tags: 4,
+          raptor: {use_raptor: false},
+          graphrag: {use_graphrag: false},
+          parent_child: {use_parent_child: false, children_delimiter: "\n\n"}
+        },
+        extension_profiles: {
+          doc: {chunk_method: "naive"},
+          docx: {chunk_method: "naive"},
+          md: {
+            chunk_method: "naive",
+            parser_config: {
+              layout_recognize: "DeepDOC",
+              chunk_token_num: 768,
+              delimiter: "\n",
+              auto_keywords: 0,
+              auto_questions: 0,
+              topn_tags: 4,
+              raptor: {use_raptor: false},
+              graphrag: {use_graphrag: false}
+            }
+          },
+          pdf: {
+            chunk_method: "naive",
+            parser_config: {
+              layout_recognize: "MinerU",
+              mineru_parse_method: "auto",
+              mineru_formula_enable: true,
+              mineru_table_enable: true,
+              mineru_lang: "English"
+            }
+          }
+        },
+        retrieval_defaults: {query: "style reference readback", top_k: 3},
         pdf_parser_required: "MinerU",
         migration_note: "If this folder contains PDFs, configure the target RAGFlow dataset or ingestion pipeline with PDF parser = MinerU before syncing."
       }

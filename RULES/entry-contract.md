@@ -50,11 +50,13 @@
 
 1. 不创建 `task_id`
 2. 不初始化深度研究 run
-3. 运行 `scripts/sync-rag-reference-folders.sh all`
-4. 如果用户明确只提到业务参考，则运行 `scripts/sync-rag-reference-folders.sh business`
-5. 如果用户明确只提到风格匹配/文风库，则运行 `scripts/sync-rag-reference-folders.sh style`
-6. 对外回复同步结果摘要，并提示“现在可以启动深度研究任务”
-7. 这个入口只对默认实例里的“深度研究主控机器人”生效，不扩展到工作实例或其他机器人
+3. 先运行 read-only plan：`scripts/sync-rag-reference-folders.sh all --dry-run`
+4. 如果用户明确只提到业务参考，则先运行 `scripts/sync-rag-reference-folders.sh business --dry-run`
+5. 如果用户明确只提到风格匹配/文风库，则先运行 `scripts/sync-rag-reference-folders.sh style --dry-run`
+6. 对外回复 dry-run 里的 `upload/replace/prune/skip` 摘要；如果计划包含非预期 replace/prune，必须停下确认
+7. 只有用户确认计划后，才运行对应真实同步命令；修复单个 unhealthy 文件时优先使用 `--only-file`
+8. 对外回复同步结果摘要，并提示“现在可以启动深度研究任务”
+9. 这个入口只对默认实例里的“深度研究主控机器人”生效，不扩展到工作实例或其他机器人
 
 ## User Reply Resume Rule
 

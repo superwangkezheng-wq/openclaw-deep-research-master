@@ -51,7 +51,9 @@ zsh scripts/sync-rag-reference-folders.sh business --dry-run --only-file "/absol
 
 A real sync is successful only when parsed documents reach terminal `DONE`, have non-zero retrievable chunks, and pass document-id-limited retrieval readback. `RUNNING`, `TIMEOUT`, `FAIL`, `CANCEL`, bad JSON, parser fallback, zero chunks, and empty readback are not accepted as success.
 
-Parser profiles are part of the contract. PPT/PPTX files must use the `presentation` chunk method. PDFs must declare MinerU parser settings. Existing healthy remote documents can be adopted, but unhealthy same-name documents are reported as planned replacements and should be remediated explicitly.
+Parser profiles are part of the contract. PPT/PPTX files must use the `presentation` chunk method. PDFs must declare MinerU parser settings with `layout_recognize = "MinerU"`. Existing healthy remote documents can be adopted, but unhealthy same-name documents are reported as planned replacements and should be remediated explicitly.
+
+For the 2026-07-28 repair evidence, scoped IDC remediation command, and rollback note, see [RAGFLOW_SYNC_CONTRACT_REPAIR_2026-07-28.md](RAGFLOW_SYNC_CONTRACT_REPAIR_2026-07-28.md).
 
 ## Acceptance
 
