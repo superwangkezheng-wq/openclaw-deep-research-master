@@ -187,12 +187,12 @@ while index < length:
         break
     start = min(next_positions)
     try:
-        value, end = decoder.raw_decode(raw[start:])
+        value, end = decoder.raw_decode(raw, start)
     except json.JSONDecodeError:
         index = start + 1
         continue
     print(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
-    index = start + end
+    index = end
 '
 }
 
