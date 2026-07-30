@@ -440,6 +440,55 @@ jq -e '.status == "completed" and .results[0].status == "completed" and .results
 jq -e '.documents["fresh.pdf"].sync_state == "synced"' "${state}/business-reference.manifest.json" >/dev/null || fail "successful readback manifest was not promoted to synced"
 rm -rf "${tmp_root}"
 
+tmp_root="$(mktemp -d /tmp/dr-ragflow-upload-pollution.XXXXXX)"
+folder="${tmp_root}/business"
+state="${tmp_root}/state"
+mkdir -p "${folder}" "${tmp_root}/config" "${tmp_root}/bin" "${state}"
+printf 'new' > "${folder}/polluted.md"
+write_mapping "${tmp_root}/config/mapping.json" "${folder}"
+echo '{"data":{"docs":[]}}' > "${tmp_root}/docs-before.json"
+cat > "${tmp_root}/docs-after.json" <<'EOF'
+{"data":{"docs":[{"name":"polluted.md","id":"doc-polluted","run":"DONE","chunk_count":15,"token_count":6924,"progress":1.0}]}}
+EOF
+echo '{"documents":{"doc-polluted":{"hit_count":4}}}' > "${tmp_root}/readback.json"
+cat > "${tmp_root}/upload-polluted.json" <<'EOF'
+gateway {not-json status line
+{"data":[{"id":"doc-polluted"}]}
+EOF
+fake_curl="${tmp_root}/bin/fake-curl.sh"
+cat > "${fake_curl}" <<EOF
+#!/bin/zsh
+args="\$*"
+if [[ "\${args}" == *"id=doc-polluted"* ]]; then
+  cat "${tmp_root}/docs-after.json"
+elif [[ "\${args}" == *"/documents?page_size=500"* ]]; then
+  cat "${tmp_root}/docs-before.json"
+elif [[ "\${args}" == *"/chunks"* ]]; then
+  echo '{"code":0}'
+else
+  echo '{"code":0}'
+fi
+EOF
+chmod +x "${fake_curl}"
+RAGFLOW_FOLDER_MAPPING_FILE="${tmp_root}/config/mapping.json" \
+RAGFLOW_API_KEY="test" \
+DOCKER_BIN="/bin/false" \
+CURL_BIN="${fake_curl}" \
+RAGFLOW_SYNC_TEST_FIXTURES=1 \
+RAGFLOW_SYNC_UPLOAD_RESPONSE_JSON_FILE="${tmp_root}/upload-polluted.json" \
+RAGFLOW_POLL_MAX_ATTEMPTS=1 \
+RAGFLOW_POLL_INTERVAL_SECONDS=0 \
+RAGFLOW_SYNC_READBACK_JSON_FILE="${tmp_root}/readback.json" \
+RAGFLOW_SYNC_STATE_DIR="${state}" \
+  zsh "${HELPER}" --mapping business-reference --report "${tmp_root}/report.json" > "${OUT}" 2> "${ERR}"
+jq -e '.status == "completed" and .results[0].status == "completed" and .results[0].parses[0].document_id == "doc-polluted" and .results[0].parses[0].readback.status == "retrievable"' "${OUT}" >/dev/null || fail "helper did not recover from polluted upload stdout"
+jq -e '.status == "completed"' "${tmp_root}/report.json" >/dev/null || fail "polluted upload did not write fresh report"
+jq -e '.documents["polluted.md"].sync_state == "synced"' "${state}/business-reference.manifest.json" >/dev/null || fail "polluted upload manifest was not promoted to synced"
+if grep -q "parse error" "${ERR}"; then
+  fail "polluted upload leaked jq parse error"
+fi
+rm -rf "${tmp_root}"
+
 echo "12/17 wrapper rejects malformed helper JSON"
 tmp_root="$(mktemp -d /tmp/dr-ragflow-bad-json.XXXXXX)"
 mkdir -p "${tmp_root}/deep-research/config" "${tmp_root}/deep-research/reports" "${tmp_root}/business" "${tmp_root}/bin"
@@ -485,7 +534,9 @@ EOF
 chmod +x "${fake_curl}"
 cat > "${tmp_root}/scripts/ragflow-local-query.sh" <<'EOF'
 #!/bin/zsh
+echo 'gateway {not-json readback status'
 echo '{"code":0,"data":{"total":2,"chunks":[{"content":"a"},{"content":"b"}]}}'
+echo '{"diagnostic":"tail-json-no-readback-schema"}'
 EOF
 chmod +x "${tmp_root}/scripts/ragflow-local-query.sh"
 OPENCLAW_WORKSPACE="${tmp_root}" \

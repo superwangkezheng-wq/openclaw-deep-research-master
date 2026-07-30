@@ -171,6 +171,50 @@ json_escape() {
   printf '%s' "$1" | "${PYTHON_BIN}" -c 'import json,sys; print(json.dumps(sys.stdin.read()))'
 }
 
+json_stream_values() {
+  "${PYTHON_BIN}" -c '
+import json
+import sys
+
+raw = sys.stdin.read()
+decoder = json.JSONDecoder()
+index = 0
+length = len(raw)
+
+while index < length:
+    next_positions = [pos for pos in (raw.find("{", index), raw.find("[", index)) if pos != -1]
+    if not next_positions:
+        break
+    start = min(next_positions)
+    try:
+        value, end = decoder.raw_decode(raw[start:])
+    except json.JSONDecodeError:
+        index = start + 1
+        continue
+    print(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+    index = start + end
+'
+}
+
+select_docs_response() {
+  local selected
+  selected="$(json_stream_values | "${JQ_BIN}" -s -c '
+    map(select(((.data.docs? // null) | type) == "array")) | last // empty
+  ')"
+  if [[ -z "${selected}" ]]; then
+    echo "RAGFlow documents response did not contain a JSON data.docs array" >&2
+    return 1
+  fi
+  printf '%s\n' "${selected}"
+}
+
+extract_upload_document_id() {
+  json_stream_values | "${JQ_BIN}" -s -r '
+    map(select(((.data? // null) | type) == "array" and ((.data[0].id? // "") | length > 0)))
+    | last.data[0].id // empty
+  '
+}
+
 supported_files() {
   local folder="$1"
   FOLDER_PATH="${folder}" "${PYTHON_BIN}" - <<'PY'
@@ -306,10 +350,10 @@ list_docs() {
       echo "Unreadable RAGFLOW_SYNC_DOCS_JSON_FILE: ${RAGFLOW_SYNC_DOCS_JSON_FILE}" >&2
       return 1
     fi
-    cat "${RAGFLOW_SYNC_DOCS_JSON_FILE}"
+    select_docs_response < "${RAGFLOW_SYNC_DOCS_JSON_FILE}" || return 1
     return 0
   fi
-  api_request GET "/api/v1/datasets/${dataset_id}/documents?page_size=500"
+  api_request GET "/api/v1/datasets/${dataset_id}/documents?page_size=500" | select_docs_response
 }
 
 delete_doc() {
@@ -647,13 +691,22 @@ PY
         '{document_id:$document_id, query:$query, hit_count:0, status:"query_failed", error:$error}')"
       continue
     fi
-    hit_count="$(printf '%s' "${response}" | "${JQ_BIN}" -r --arg doc_id "${doc_id}" '
-      if ((.data.total? // null) != null) then
-        (.data.total // 0)
-      elif ((.data.chunks? // null) | type) == "array" then
-        (.data.chunks | length)
+    hit_count="$(printf '%s' "${response}" | json_stream_values | "${JQ_BIN}" -s -r --arg doc_id "${doc_id}" '
+      if length == 0 then
+        0
       else
-        ([.. | objects | select((.document_id? // .doc_id? // .id? // "") == $doc_id)] | length)
+        (map(select(
+          ((.data.total? // null) != null)
+          or (((.data.chunks? // null) | type) == "array")
+          or ([. | .. | objects | select((.document_id? // .doc_id? // .id? // "") == $doc_id)] | length > 0)
+        )) | last // {}) as $payload
+        | if (($payload.data.total? // null) != null) then
+            ($payload.data.total // 0)
+          elif (($payload.data.chunks? // null) | type) == "array" then
+            ($payload.data.chunks | length)
+          else
+            ([$payload | .. | objects | select((.document_id? // .doc_id? // .id? // "") == $doc_id)] | length)
+          end
       end
     ' 2>/dev/null || echo 0)"
     if [[ ! "${hit_count}" =~ '^[0-9]+$' ]]; then
@@ -1243,6 +1296,9 @@ sync_mapping() {
   typeset -A parse_size_by_doc_id
   typeset -A parse_chunk_method_by_doc_id
   typeset -A parse_remote_name_by_doc_id
+  local file_path file_name remote_name doc_id existing_id action upload_response extension chunk_method parser_config_json
+  local local_sha256 local_size manifest_sha256 manifest_size existing_doc_json existing_run existing_chunk_total replace_reason
+  local existing_process_duration existing_progress existing_progress_msg classification_json class_action readback_json
   local desired_names_file
   local uploaded_count=0
   local skipped_count=0
@@ -1252,7 +1308,6 @@ sync_mapping() {
   : > "${desired_names_file}"
 
   for file_path in "${files[@]}"; do
-    local file_name remote_name
     file_name="${file_path:t}"
     remote_name="$(resolve_remote_name "${mapping_name}" "${file_name}")"
     printf '%s\n' "${remote_name}" >> "${desired_names_file}"
@@ -1292,7 +1347,9 @@ sync_mapping() {
         --arg profile "${profile}" \
         --arg description "${description}" \
         --rawfile documents_raw "${blocked_report_file}" \
-        '{
+        'def parsed_lines($raw; $kind):
+          ($raw | split("\n") | map(select(length > 0) | . as $line | try ($line | fromjson) catch {status:"invalid_json_line", kind:$kind, raw:$line}));
+        {
           mapping: $mapping,
           folder: $folder,
           dataset_id: $dataset_id,
@@ -1302,15 +1359,15 @@ sync_mapping() {
           uploaded_count: 0,
           skipped_existing_count: 0,
           empty_file_count: 0,
-          documents: (($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson))),
+          documents: parsed_lines($documents_raw; "document"),
           parses: [],
           plan: {
             upload_count: 0,
             replace_count: 0,
-            prune_count: (($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson)) | length),
+            prune_count: (parsed_lines($documents_raw; "document") | length),
             skip_count: 0,
             empty_count: 0,
-            blocked_count: (($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson)) | length)
+            blocked_count: (parsed_lines($documents_raw; "document") | length)
           }
         }'
       rm -f "${blocked_report_file}" "${desired_names_file}"
@@ -1327,8 +1384,6 @@ sync_mapping() {
   docs_json="$(list_docs "${dataset_id}")"
 
   for file_path in "${files[@]}"; do
-    local file_name remote_name doc_id existing_id action upload_response extension chunk_method parser_config_json
-    local local_sha256 local_size manifest_sha256 manifest_size existing_doc_json existing_run existing_chunk_total replace_reason existing_process_duration existing_progress existing_progress_msg classification_json class_action readback_json
     if [[ ! -s "${file_path}" ]]; then
       empty_count=$((empty_count + 1))
       report_items+=("{\"file\":$(json_escape "${file_path}"),\"name\":$(json_escape "${file_path:t}"),\"status\":\"empty_file\"}")
@@ -1404,7 +1459,7 @@ sync_mapping() {
     fi
 
     upload_response="$(upload_doc "${dataset_id}" "${file_path}" "${remote_name}")"
-    doc_id="$(printf '%s' "${upload_response}" | "${JQ_BIN}" -r '.data[0].id // empty')"
+    doc_id="$(printf '%s' "${upload_response}" | extract_upload_document_id)"
     if [[ -z "${doc_id}" ]]; then
       report_items+=("{\"file\":$(json_escape "${file_path}"),\"name\":$(json_escape "${remote_name}"),\"status\":\"upload_failed\",\"response\":$(json_escape "${upload_response}")}")
       continue
@@ -1479,7 +1534,9 @@ sync_mapping() {
     --argjson empty_count "${empty_count}" \
     --rawfile documents_raw "${report_file}" \
     --rawfile parses_raw "${parse_file}" \
-    '{
+    'def parsed_lines($raw; $kind):
+      ($raw | split("\n") | map(select(length > 0) | . as $line | try ($line | fromjson) catch {status:"invalid_json_line", kind:$kind, raw:$line}));
+    {
       mapping: $mapping,
       folder: $folder,
       dataset_id: $dataset_id,
@@ -1489,16 +1546,16 @@ sync_mapping() {
       skipped_existing_count: $skipped_count,
       empty_file_count: $empty_count,
       status: (
-        if any((($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson))[]?); ((.status // "") | test("blocked|failed|pending|timeout|cancel"; "i")) or ((.status == "skipped_existing") and (((.retrievable_chunk_count // 0) <= 0) or (((.readback.status // "retrievable") != "retrievable") and ((.readback.status // "") != "skipped_by_limit"))))) then
+        if any((parsed_lines($documents_raw; "document"))[]?; ((.status // "") | test("blocked|failed|pending|timeout|cancel|invalid_json_line"; "i")) or ((.status == "skipped_existing") and (((.retrievable_chunk_count // 0) <= 0) or (((.readback.status // "retrievable") != "retrievable") and ((.readback.status // "") != "skipped_by_limit"))))) then
           "failed"
-        elif any((($parses_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson))[]?); (.run != "DONE") or (((.retrievable_chunk_count // .chunk_count // 0) <= 0)) or ((.readback.status // "retrievable") != "retrievable")) then
+        elif any((parsed_lines($parses_raw; "parse"))[]?; ((.status // "") == "invalid_json_line") or (.run != "DONE") or (((.retrievable_chunk_count // .chunk_count // 0) <= 0)) or ((.readback.status // "retrievable") != "retrievable")) then
           "failed"
         else
           "completed"
         end
       ),
-      documents: (($documents_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson))),
-      parses: (($parses_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson)))
+      documents: parsed_lines($documents_raw; "document"),
+      parses: parsed_lines($parses_raw; "parse")
     }'
   )"
   rm -f "${desired_names_file}"
@@ -1525,15 +1582,17 @@ final_report="$("${JQ_BIN}" -n \
   --arg generated_at "$(date '+%Y-%m-%dT%H:%M:%S%z')" \
   --arg dry_run "${DRY_RUN}" \
   --rawfile results_raw "${results_file}" \
-  '{
-    generated_at: $generated_at,
-    dry_run: ($dry_run == "1"),
-    results: (($results_raw | split("\n") | map(select(length > 1 and startswith("{") and endswith("}")) | fromjson)))
-  }
+    'def parsed_lines($raw; $kind):
+      ($raw | split("\n") | map(select(length > 0) | . as $line | try ($line | fromjson) catch {status:"invalid_json_line", kind:$kind, raw:$line}));
+    {
+      generated_at: $generated_at,
+      dry_run: ($dry_run == "1"),
+      results: parsed_lines($results_raw; "result")
+    }
   | .status = (
       if ($dry_run == "1") and any(.results[]?; (.status // "") == "blocked") then
         "blocked"
-      elif any(.results[]?; (.status // "") == "blocked" or (.status // "") == "failed") then
+      elif any(.results[]?; (.status // "") == "blocked" or (.status // "") == "failed" or (.status // "") == "invalid_json_line") then
         "failed"
       elif any(.results[]?; (.status // "") == "planned") then
         "planned"
