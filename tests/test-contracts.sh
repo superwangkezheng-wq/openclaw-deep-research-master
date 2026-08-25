@@ -975,13 +975,13 @@ done
 printf '%s\n' "$url" >> "$FAKE_CURL_LOG"
 case "$url" in
   *page=1\&page_size=2*)
-    printf '%s\n' '{"data":{"docs":[{"id":"d1","name":"doc1","run":"DONE"},{"id":"d2","name":"doc2","run":"DONE"}]}}'
+    printf '%s\n' '{"code":0,"data":{"docs":[{"id":"d1","name":"doc1","run":"DONE"},{"id":"d2","name":"doc2","run":"DONE"}]}}'
     ;;
   *page=2\&page_size=2*)
-    printf '%s\n' '{"data":{"docs":[{"id":"d3","name":"doc3","run":"DONE"}]}}'
+    printf '%s\n' '{"code":0,"data":{"docs":[{"id":"d3","name":"doc3","run":"DONE"}]}}'
     ;;
   *)
-    printf '%s\n' '{"data":{"docs":[]}}'
+    printf '%s\n' '{"code":0,"data":{"docs":[]}}'
     ;;
 esac
 EOF
@@ -989,6 +989,35 @@ chmod +x "${fake_curl}"
 FAKE_CURL_LOG="${tmp_root}/curl.log" OPENCLAW_WORKSPACE="${tmp_root}" CURL_BIN="${fake_curl}" RAGFLOW_LIST_PAGE_SIZE=2 zsh "${SCRIPT_ROOT}/ragflow-list-documents.sh" --mapping business-reference --output "${tmp_root}/docs.json" > "${OUT}"
 assert_eq "$(jq -r '.documents | length' "${tmp_root}/docs.json")" "3" "ragflow paginated document count"
 grep -q 'page=2&page_size=2' "${tmp_root}/curl.log" || fail "ragflow pagination did not request page 2"
+
+# RAGFlow refuses in the body, not the status line. A dataset that does not
+# exist answers 200 with code 102 and no .data, so `(.data.docs // []) | length`
+# reads zero and the caller cannot tell an unreachable library from an empty one.
+cat > "${fake_curl}" <<'EOF'
+#!/bin/sh
+printf '%s\n' '{"code":102,"message":"You do not own the dataset ds1"}'
+EOF
+chmod +x "${fake_curl}"
+rm -f "${tmp_root}/docs.json"
+if FAKE_CURL_LOG="${tmp_root}/curl.log" OPENCLAW_WORKSPACE="${tmp_root}" CURL_BIN="${fake_curl}" RAGFLOW_LIST_PAGE_SIZE=2 zsh "${SCRIPT_ROOT}/ragflow-list-documents.sh" --mapping business-reference --output "${tmp_root}/docs.json" > "${OUT}" 2>"${tmp_root}/err.log"; then
+  fail "ragflow list documents accepted a refusal as an empty document list"
+fi
+grep -q 'code=102' "${tmp_root}/err.log" || fail "ragflow refusal did not report the response code"
+[[ -s "${tmp_root}/docs.json" ]] && fail "ragflow list documents wrote output for a refused request"
+
+# A body with no code at all is not a success either. Defaulting the missing
+# field to zero would let any well-formed JSON that lacks .data -- a proxy error
+# page, a truncated response -- pass as an empty library.
+cat > "${fake_curl}" <<'EOF'
+#!/bin/sh
+printf '%s\n' '{"data":{"docs":[]}}'
+EOF
+chmod +x "${fake_curl}"
+rm -f "${tmp_root}/docs.json"
+if FAKE_CURL_LOG="${tmp_root}/curl.log" OPENCLAW_WORKSPACE="${tmp_root}" CURL_BIN="${fake_curl}" RAGFLOW_LIST_PAGE_SIZE=2 zsh "${SCRIPT_ROOT}/ragflow-list-documents.sh" --mapping business-reference --output "${tmp_root}/docs.json" > "${OUT}" 2>"${tmp_root}/err.log"; then
+  fail "ragflow list documents accepted a response carrying no result code"
+fi
+grep -q 'code=missing' "${tmp_root}/err.log" || fail "ragflow missing result code was not named"
 rm -rf "${tmp_root}"
 
 echo "20/33 stage reports use stable idempotency keys"

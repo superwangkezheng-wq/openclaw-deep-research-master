@@ -125,6 +125,16 @@ while (( page <= MAX_PAGES )); do
     echo "RAGFlow returned invalid JSON for page ${page}" >&2
     exit 1
   fi
+  # RAGFlow reports refusals in the body, not the status line: a dataset that
+  # does not exist answers 200 with code 102 and no .data, which reads exactly
+  # like a dataset that is simply empty. Without this the preflight downstream
+  # treats an unreachable library as a reachable empty one.
+  response_code="$(printf '%s' "${response}" | "${JQ_BIN}" -r '.code // "missing"')"
+  if [[ "${response_code}" != "0" ]]; then
+    response_message="$(printf '%s' "${response}" | "${JQ_BIN}" -r '.message // "no message"')"
+    echo "RAGFlow rejected page ${page}: code=${response_code} message=${response_message}" >&2
+    exit 1
+  fi
   printf '%s\n' "${response}" >> "${pages_jsonl}"
   docs_count="$(printf '%s' "${response}" | "${JQ_BIN}" -r '(.data.docs // []) | length')"
   if (( docs_count < PAGE_SIZE )); then
