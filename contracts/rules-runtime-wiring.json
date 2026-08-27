@@ -1,0 +1,72 @@
+{
+  "schema_version": "rules-runtime-wiring/v1",
+  "subject": "RULES/*.md",
+  "runtime_contract_file": "AGENTS.md",
+  "statement": "Every document listed under not_wired is reference material only. The OpenClaw runtime does not load it, so nothing in it constrains the deep research master controller at run time.",
+  "runtime_evidence": [
+    "openclaw dist/workspace-DkQ7irPD.js:740 loadWorkspaceBootstrapFiles() builds a fixed list of eight workspace-ROOT filenames (AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md, BOOTSTRAP.md, MEMORY.md). It never walks subdirectories, so RULES/ is unreachable.",
+    "openclaw dist/workspace-DkQ7irPD.js:217 VALID_BOOTSTRAP_NAMES restricts even the opt-in bootstrap-extra-files hook to those same eight basenames. A pattern matching RULES/*.md would be rejected as invalid-bootstrap-filename.",
+    "The bootstrap-extra-files hook is enabled in openclaw.json but declares no paths/patterns/files, so its handler returns before reading anything.",
+    "Calling loadWorkspaceBootstrapFiles() against this workspace returns AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md and HEARTBEAT.md as loaded, BOOTSTRAP.md as missing, and no RULES/ path at all."
+  ],
+  "consumed_definition": "A declared document counts as consumed by the runtime when its path appears literally in a runtime-loaded bootstrap file at the repository root, or in any file under scripts/. References from tests/ and from other RULES/ documents do not count: tests are the verification object and RULES/ cross-references stay inside the un-wired set.",
+  "audit_rule": "scripts/audit-rules-wiring.sh audits this declaration in both directions. A declared document that the runtime has started to consume is reported as declared_but_now_consumed and must be removed from this file. A declared path that does not exist is reported as unknown_declaration. A RULES/*.md present on disk but absent here is reported as undeclared_rules_file, so a new rule document cannot quietly inherit un-wired status. An unreadable, malformed or empty declaration fails closed rather than reporting zero findings.",
+  "why_not_wired": "Wiring these documents in, or merging them back into AGENTS.md, would change the prompt of a running production agent. That behaviour change was explicitly declined. The gap is recorded here instead of being left implicit.",
+  "known_runtime_divergence": "RULES/ is a superset of AGENTS.md. Hardening that exists only in RULES/ and therefore does NOT bind the running agent includes: the two-round follow-up cap (RULES/entry-contract.md), the read-only --dry-run plan and stop-on-unexpected-replace/prune gate before reference sync plus --only-file scoped repair (RULES/entry-contract.md, versus AGENTS.md which tells the controller to run sync-rag-reference-folders.sh directly), the three-tier memory pipeline (RULES/memory-integration.md), and progress reporting triggers, frequency caps and timeout warnings (RULES/progress-reporting.md).",
+  "not_wired": [
+    {
+      "path": "RULES/dispatch-and-recovery.md",
+      "reason": "Subagent dispatch, stage status mutation, child completion recovery and completion event rules. AGENTS.md carries its own copy of all four sections, so the runtime is governed by AGENTS.md and this file is documentation.",
+      "declared_by": "deepresearch-sync",
+      "declared_at": "2026-08-27T00:00:00+08:00"
+    },
+    {
+      "path": "RULES/entry-contract.md",
+      "reason": "Entry contract and user reply resume rules. AGENTS.md carries an earlier copy that lacks the two-round follow-up cap and lacks the --dry-run / --only-file reference sync safety gate, so that hardening is not in force at run time.",
+      "declared_by": "deepresearch-sync",
+      "declared_at": "2026-08-27T00:00:00+08:00"
+    },
+    {
+      "path": "RULES/feishu-routing.md",
+      "reason": "Feishu entry routing rule. AGENTS.md carries an equivalent Feishu Routing Rule section.",
+      "declared_by": "deepresearch-sync",
+      "declared_at": "2026-08-27T00:00:00+08:00"
+    },
+    {
+      "path": "RULES/gates-and-delivery.md",
+      "reason": "Stage 1 required files and the six stage gates. AGENTS.md carries equivalent gate sections plus an Observability Gate; the Obsidian sync subsection here is more detailed than the single Obsidian clause in AGENTS.md.",
+      "declared_by": "deepresearch-sync",
+      "declared_at": "2026-08-27T00:00:00+08:00"
+    },
+    {
+      "path": "RULES/handoff-targets.md",
+      "reason": "The six downstream handoff target definitions. AGENTS.md carries an equivalent section for each of the six agents.",
+      "declared_by": "deepresearch-sync",
+      "declared_at": "2026-08-27T00:00:00+08:00"
+    },
+    {
+      "path": "RULES/memory-integration.md",
+      "reason": "Three-tier memory write and recall pipeline. AGENTS.md has no memory section at all, so none of this governs the running agent.",
+      "declared_by": "deepresearch-sync",
+      "declared_at": "2026-08-27T00:00:00+08:00"
+    },
+    {
+      "path": "RULES/progress-reporting.md",
+      "reason": "Progress report triggers, format, frequency cap and timeout warnings. AGENTS.md only states that the master controller is the one allowed to report, with none of these rules attached.",
+      "declared_by": "deepresearch-sync",
+      "declared_at": "2026-08-27T00:00:00+08:00"
+    },
+    {
+      "path": "RULES/return-loop.md",
+      "reason": "Return routing rules for rejected work. AGENTS.md carries an equivalent Return Loop Rules section.",
+      "declared_by": "deepresearch-sync",
+      "declared_at": "2026-08-27T00:00:00+08:00"
+    },
+    {
+      "path": "RULES/stage-execution.md",
+      "reason": "Stage execution ordering. AGENTS.md carries an equivalent Stage 1 Execution Rule section covering the same stage sequence.",
+      "declared_by": "deepresearch-sync",
+      "declared_at": "2026-08-27T00:00:00+08:00"
+    }
+  ]
+}

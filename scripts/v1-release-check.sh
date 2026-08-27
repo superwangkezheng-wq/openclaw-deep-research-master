@@ -40,6 +40,7 @@ fi
 section "contract tests"
 zsh tests/test-contracts.sh
 zsh tests/test-ragflow-sync-contracts.sh
+zsh tests/test-runtime-contract.sh
 
 section "script syntax"
 for script in scripts/*.sh; do
@@ -69,6 +70,11 @@ handoff_scan_paths=(
   AGENTS.md
   deep-research/specs
   skills/openclaw-deep-research/templates
+  # tests/ and contracts/ ship with the repo and are published like everything
+  # else. Leaving them out of this scan is how an operator's absolute home path
+  # reached the public tree in tests/test-contracts.sh.
+  tests
+  contracts
 )
 if [[ "${IS_GIT_REPO}" == "true" ]]; then
   personal_path_hits="$(git grep -n -E "${personal_user_path_pattern}|${personal_vault_path_pattern}" -- "${handoff_scan_paths[@]}" 2>/dev/null || true)"

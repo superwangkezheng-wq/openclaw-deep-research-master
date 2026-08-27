@@ -1361,6 +1361,12 @@ grep -q 'bash scripts/install-config-wizard.sh --mode cloud' "${repo_root}/READM
 grep -q 'bash scripts/install-config-wizard.sh --mode cloud' "${repo_root}/README.zh-CN.md" || fail "Chinese README missing cloud setup wizard command"
 grep -q 'qwen' "${repo_root}/docs/INSTALLATION.md" || fail "installation doc missing weaker-model guidance"
 grep -q 'REMOTE_ONLY' "${repo_root}/docs/INSTALLATION.md" || fail "installation doc missing cloud reference-folder guidance"
+# The three checks below grade RULES/entry-contract.md, which the OpenClaw
+# runtime does not load: bootstrap context comes from a fixed list of
+# workspace-ROOT filenames, so this hardening is documentation, not behaviour.
+# AGENTS.md is the file the agent actually receives, and it carries no dry-run
+# gate. contracts/rules-runtime-wiring.json declares that gap and
+# tests/test-runtime-contract.sh grades the loaded file.
 grep -q 'sync-rag-reference-folders.sh all --dry-run' "${repo_root}/RULES/entry-contract.md" || fail "entry contract must require dry-run before all reference sync"
 grep -q 'sync-rag-reference-folders.sh business --dry-run' "${repo_root}/RULES/entry-contract.md" || fail "entry contract must require dry-run before business sync"
 grep -q -- '--only-file' "${repo_root}/RULES/entry-contract.md" || fail "entry contract missing scoped single-file sync guidance"
@@ -1643,7 +1649,11 @@ zsh -n \
   "${SCRIPT_ROOT}/package-customer-delivery.sh" \
   "${SCRIPT_ROOT}/generate-setup-self-check-report.sh" \
   "${SCRIPT_ROOT}/finalize-deep-research-run.sh"
-live_scripts="/Users/lenovo/.openclaw/workspace-deep-research-master/scripts"
+# The live workspace copy is checked too, so a hand-edit there cannot drift away
+# from the project tree unnoticed. Resolved from ${HOME} rather than one
+# operator's absolute path, and skipped when no live workspace is installed.
+live_scripts="${DEEP_RESEARCH_LIVE_SCRIPTS:-${HOME}/.openclaw/workspace-deep-research-master/scripts}"
+if [[ -d "${live_scripts}" ]]; then
 zsh -n \
   "${live_scripts}/deep-research-watchdog.sh" \
   "${live_scripts}/rebuild-evidence-index.sh" \
@@ -1656,5 +1666,8 @@ zsh -n \
   "${live_scripts}/package-customer-delivery.sh" \
   "${live_scripts}/generate-setup-self-check-report.sh" \
   "${live_scripts}/finalize-deep-research-run.sh"
+else
+  echo "  (no live workspace at ${live_scripts}; project-tree syntax check only)"
+fi
 
 echo "PASS: deep research contracts"
