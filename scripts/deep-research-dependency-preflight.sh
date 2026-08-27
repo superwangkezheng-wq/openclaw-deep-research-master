@@ -31,9 +31,9 @@ if [[ -f "${ENV_FILE}" ]]; then
 fi
 
 sha256_file() {
-  local path="$1"
-  if [[ -f "${path}" ]]; then
-    "${SHASUM_BIN}" -a 256 "${path}" | /usr/bin/awk '{print $1}'
+  local target="$1"
+  if [[ -f "${target}" ]]; then
+    "${SHASUM_BIN}" -a 256 "${target}" | /usr/bin/awk '{print $1}'
   else
     printf ''
   fi
