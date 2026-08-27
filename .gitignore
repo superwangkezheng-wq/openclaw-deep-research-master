@@ -17,6 +17,21 @@
 deep-research/runs/
 deep-research/reports/
 
+# RAGFlow sync state. These manifests record the absolute path of every synced
+# source file, so they carry the operator's local directory layout and the
+# titles of internal reference documents. tests/test-contracts.sh already skips
+# state/ in its personal-path scan; this keeps the same files out of git.
+ragflow_local_kb/state/
+
+# Pre-relocation duplicates left in the working tree. The tracked copies are
+# docs/assets/ and deep-research/config/; these two roots are stale twins.
+/assets/
+/config/
+
+# Third-party skill package installed into the workspace, not part of this
+# project's source.
+skills/ima-skills/
+
 # Local/private RAGFlow configuration
 deep-research/config/*.env
 deep-research/config/*profiles.json
